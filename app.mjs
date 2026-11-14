@@ -1,6 +1,6 @@
-import {listSyncStatus} from './sync-status.mjs?v=20261114-shop1';
-import {connectSharon,snapshot,installSnapshot} from './sharon.mjs?v=20261114-shop1';
-import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261114-shop1';
+import {listSyncStatus} from './sync-status.mjs?v=20261114-shop2';
+import {connectSharon,snapshot,installSnapshot} from './sharon.mjs?v=20261114-shop2';
+import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261114-shop2';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 let cloudBusy=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -498,7 +498,13 @@ async function openSharonLists(){
    }));
    const link=el('a','Delen en toegang beheren in Sharon');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
   },()=>true,'Sluiten');
- }catch(e){toast('Verbinding nog niet beschikbaar: '+e.message);}
+ }catch(e){
+  openModal('Verbinden met Sharon',()=>{
+   $('#modalBody').append(el('p',e.message,'hint'));
+   const link=el('a','Open Sharon · Personen');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
+   $('#modalBody').append(el('p','Verbind je identiteit in Sharon en kom daarna terug om deze lijst te koppelen. Je lokale lijst blijft bewaard.','hint'));
+  },()=>true,'Sluiten');
+ }
 }
 $('#sharonLists').onclick=openSharonLists;
 

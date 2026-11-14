@@ -9,3 +9,5 @@ The server checks membership on every action, list-specific access, owner-only g
 Deploy server/connections.php to the existing /log/api/connections.php endpoint before releasing both clients. Preserve /log/private/connections and all existing identity data. GitHub Pages cannot deploy PHP. Validate server tests, then test two real connected identities: create, share, edit, conflict, offline retry, revoke. Clients display unavailable/pending until the endpoint supports these actions. The existing localStorage key bs.app.v1 is deliberately retained.
 
 Release coordination: merge/release the matching BS and Sharon pull requests only after server deployment and cross-device verification. Follow the existing Sharon version bump and asset generation before release. These changes do not rename the GitHub repository or move existing URLs.
+
+Live apps: https://stefan-van-dijk.github.io/shop/ and https://stefan-van-dijk.github.io/sharon/. Shop imports the matching Sharon 0.4.78 service modules. No dependency on the former Shopl repository remains. A user explicitly connects a list in Beheer → Gedeelde lijsten via Sharon → Deze lijst verbinden.
