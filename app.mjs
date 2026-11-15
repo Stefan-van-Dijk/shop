@@ -1,7 +1,7 @@
-import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-compact';
-import {listSyncStatus} from './sync-status.mjs?v=20261115-compact';
-import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-compact';
-import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-compact';
+import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-links';
+import {listSyncStatus} from './sync-status.mjs?v=20261115-links';
+import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-links';
+import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-links';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 let cloudBusy=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -22,7 +22,7 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.d
 function render(){
  renderContext();
  $('#welcome').hidden=state.products.length>0||view!=='shop';$('#count').textContent=list()?.items.filter(i=>!i.done).length||0;
- const sel=$('#listSelect');sel.replaceChildren();state.lists.forEach(l=>{const o=el('option',l.name);o.value=l.id;sel.append(o);});sel.value=activeList||'';
+ const sel=$('#listSelect');sel.replaceChildren();state.lists.filter(l=>!l.cloud?.archived).forEach(l=>{const o=el('option',l.name);o.value=l.id;sel.append(o);});sel.value=activeList||'';
  if(view==='home')renderHome();if(view==='lists')renderList($('#listRows'),$('#onlyNeeded').checked);if(view==='manage')renderManage();
 }
 function ensureList(){if(!list()){const l={id:uid(),name:'Boodschappen',items:[]};state.lists.push(l);activeList=l.id;}}
@@ -65,8 +65,9 @@ function renderList(target=$('#listRows'),neededOnly=false){target.replaceChildr
 $('#manageSearch').oninput=renderManage;$('#listSelect').onchange=e=>{activeList=e.target.value;save();render();};
 $('#newList').onclick=()=>{let name;openModal('Nieuwe lijst',()=>name=field('Naam','text'),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');const l={id:uid(),name:name.value.trim(),items:[]};state.lists.push(l);activeList=l.id;save();render();});};
 $('#renameList').onclick=()=>{if(!list())return;let name;openModal('Lijst hernoemen',()=>name=field('Naam','text',list().name),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');list().name=name.value.trim();save();render();});};
-$('#deleteList').onclick=$('#contextDelete').onclick=()=>{const removed=list();if(!removed)return;openModal('Lijst verwijderen',()=>$('#modalBody').append(el('p','“'+removed.name+'” verwijderen? De producten blijven in je verzameling.')),()=>{state.deletedLists=state.deletedLists||[];state.deletedLists.push({...removed,deletedAt:Date.now()});state.lists=state.lists.filter(l=>l.id!==removed.id);activeList=state.lists[0]?.id;save();render();},'Verwijderen');};
-$('#restoreList').onclick=()=>{const removed=state.deletedLists?.pop();if(!removed){toast('Geen verwijderde lijst om terug te zetten.');return;}delete removed.deletedAt;state.lists.push(removed);activeList=removed.id;save();render();toast('Lijst teruggezet.');};
+$('#deleteList').onclick=$('#contextDelete').onclick=()=>{const removed=list();if(!removed)return;openModal('Lijst verwijderen',()=>$('#modalBody').append(el('p','“'+removed.name+'” verwijderen? De producten blijven in je verzameling.')),()=>{if(removed.cloud){state.pendingLeaves=state.pendingLeaves||[];if(!state.pendingLeaves.includes(removed.id))state.pendingLeaves.push(removed.id);}
+ state.deletedLists=state.deletedLists||[];state.deletedLists.push({...removed,deletedAt:Date.now()});state.lists=state.lists.filter(l=>l.id!==removed.id);activeList=state.lists.find(l=>!l.cloud?.archived)?.id;save();render();syncCloud();},'Verwijderen');};
+$('#restoreList').onclick=()=>{const removed=state.deletedLists?.pop();if(!removed){toast('Geen verwijderde lijst om terug te zetten.');return;}delete removed.deletedAt;if(removed.cloud){removed.id=uid();delete removed.cloud;removed.name+=' (eigen kopie)';}state.lists.push(removed);activeList=removed.id;save();render();toast('Lijst teruggezet.');};
 $('#findDuplicates').onclick=reviewSimilarProducts;
 
 $('#clearDone').onclick=()=>{if(list()&&confirm('Alle afgevinkte regels verwijderen?')){list().items=list().items.filter(i=>!i.done);save();render();}};
@@ -195,7 +196,7 @@ loadPublishedCatalog();
 
 function renderContext(){
  updateCloudStatus();
- const select=$('#activeListSelect');select.replaceChildren();for(const l of state.lists){const o=el('option',l.name);o.value=l.id;select.append(o);}select.value=activeList||'';
+ const select=$('#activeListSelect');select.replaceChildren();for(const l of state.lists.filter(l=>!l.cloud?.archived)){const o=el('option',l.name);o.value=l.id;select.append(o);}select.value=activeList||'';
  const n=list()?.items.filter(i=>!i.done).length||0;$('#count').textContent=n;$('#contextCount').textContent=n===1?'1 product nodig':n+' producten nodig';
 }
 function productControl(p){
@@ -448,8 +449,21 @@ function markCloudChanges(){
 async function syncCloud(){
  if(cloudBusy||saveBlocked||document.hidden)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
-  const linked=state.lists.filter(l=>l.cloud);if(!linked.length)return;
+  if(!identity.saved()?.confirmed)return;
   const api=await connectSharon();
+  for(const id of [...(state.pendingLeaves||[])]){await api.leave(id);state.pendingLeaves=state.pendingLeaves.filter(x=>x!==id);localStorage.setItem(KEY,JSON.stringify(state));}
+  const remote=await api.index();const ids=new Set(remote.lists.map(r=>r.id));
+  state.lists=state.lists.filter(l=>!l.cloud||ids.has(l.id));
+  for(const row of remote.lists){let l=state.lists.find(x=>x.id===row.id);if(!l){const response=await api.read(row.id);validate({schemaVersion:1,...response.list.payload,recipes:[],lists:[response.list.payload.list]});l=installSnapshot(state,response.list.payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(response.list.payload),confirmedAt:Date.now()});}if(l.cloud)l.cloud.archived=!!row.archived;}
+  if(!state.lists.some(l=>l.id===activeList&&!l.cloud?.archived))activeList=state.lists.find(l=>!l.cloud?.archived)?.id;
+  localStorage.setItem(KEY,JSON.stringify(state));render();
+  for(const l of state.lists.filter(l=>!l.cloud)){
+   syncingList=l;if(!l.upload){l.upload={operation:crypto.randomUUID(),json:JSON.stringify(snapshot(state,l))};localStorage.setItem(KEY,JSON.stringify(state));}
+   const response=await api.write(JSON.parse(l.upload.json),0,l.upload.operation,true);
+   l.cloud={revision:response.list.revision,role:'owner',base:l.upload.json,confirmedAt:Date.now()};delete l.upload;markCloudChanges();localStorage.setItem(KEY,JSON.stringify(state));
+  }
+  const linked=state.lists.filter(l=>l.cloud&&!l.cloud.archived);
+
   for(const l of linked){
    syncingList=l;
    if(l.cloud.conflict)continue;
@@ -464,7 +478,7 @@ async function syncCloud(){
     if(response.list.revision!==l.cloud.revision){
      const payload=response.list.payload;
      validate({schemaVersion:1,...payload,recipes:[],lists:[payload.list]});
-     installSnapshot(state,payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(payload),confirmedAt:Date.now()});
+     installSnapshot(state,payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(payload),confirmedAt:Date.now(),archived:l.cloud.archived});
      localStorage.setItem(KEY,JSON.stringify(state));render();
     }else localStorage.setItem(KEY,JSON.stringify(state));
    }

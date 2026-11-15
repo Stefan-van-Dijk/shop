@@ -4,14 +4,14 @@ export async function connectSharon(){
  await identity.check();
  const credential=identity.saved().token;
  const request=(action,input={})=>{if(identity.saved()?.token!==credential)throw Error('De koppeling is ondertussen gewijzigd.');return identity.request(action,input,credential);};
- return {index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
+ return {leave:id=>request('shoplist-leave',{id}),index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
 }
 export function snapshot(state,list){
  const source=[...new Set(list.items.map(i=>i.productId))].map(id=>state.products.find(p=>p.id===id));
  const products=source.map(p=>{const {remoteId,...rest}=p;return {...rest,id:remoteId||p.id,categoryId:state.categories.find(c=>c.id===p.categoryId)?.remoteId||p.categoryId};});
  const categoryIds=new Set(source.map(p=>p.categoryId));
  const categories=state.categories.filter(c=>categoryIds.has(c.id)).map(c=>({id:c.remoteId||c.id,name:c.name,entries:[]}));
- const {cloud,...clean}=list;
+ const {cloud,upload,...clean}=list;
  return {list:{...clean,items:clean.items.map(i=>({...i,productId:source.find(p=>p.id===i.productId)?.remoteId||i.productId}))},products,categories};
 }
 export function installSnapshot(state,payload,cloud){
