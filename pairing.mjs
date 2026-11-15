@@ -14,8 +14,8 @@ export class ShopIdentity {
   const code=parsePairCode(value);let saved=this.saved();
   if(saved?.confirmed)throw Error('Deze Shop is al verbonden. Verbreek eerst de bestaande verbinding.');
   if(saved?.id!==code.id){saved={id:code.id,token:token(),confirmed:false};this.storage.setItem(PAIR_KEY,JSON.stringify(saved));}
-  const result=await this.request('shop-pair-claim',{...code,deviceToken:saved.token},null);this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,fingerprint:result.fingerprint}));return result;
+  const result=await this.request('shop-pair-claim',{...code,deviceToken:saved.token},null);if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,fingerprint:result.fingerprint}));return result;
  }
- async check(){if(!this.saved()?.token)throw Error('Shop werkt zelfstandig. Plak een koppelcode om Sharon te verbinden.');const result=await this.request('shop-device-self');if(!result.self?.personId||!result.self?.name)throw Error('Ongeldig serverantwoord.');this.storage.setItem(PAIR_KEY,JSON.stringify({...this.saved(),confirmed:true,self:result.self}));return result.self;}
+ async check(){const saved=this.saved();if(!saved?.token)throw Error('Shop werkt zelfstandig. Plak een koppelcode om Sharon te verbinden.');const result=await this.request('shop-device-self',{},saved.token);if(!result.self?.personId||!result.self?.name)throw Error('Ongeldig serverantwoord.');if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,confirmed:true,self:result.self}));return result.self;}
  forget(){this.storage.removeItem(PAIR_KEY);}
 }

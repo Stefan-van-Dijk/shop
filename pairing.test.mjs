@@ -15,3 +15,6 @@ test('Only a server-confirmed identity is marked connected; forget preserves oth
  const service=new ShopIdentity(store,async(url,o)=>{assert.equal(o.headers['X-Log-Access-Token'],'b'.repeat(43));return {ok,json:async()=>ok?{self:{personId:'abcdefghijkl',name:'Test'}}:{error:'pair_pending'}};});await assert.rejects(service.check());assert.ok(!service.saved().confirmed);ok=true;await service.check();assert.equal(service.saved().confirmed,true);await assert.rejects(service.claim(code));service.forget();assert.equal(store.getItem('bs.app.v1'),'private lists');
 });
 test('Pair codes accept only the fixed format, never a supplied endpoint',()=>{assert.equal(parsePairCode(' '+code+' ').id,'abcdefghijkl');assert.throws(()=>parsePairCode('https://example.org/'+code));});
+test('A late verification cannot restore a disconnected identity',async()=>{
+ const store=storage();store.setItem(PAIR_KEY,JSON.stringify({id:'abcdefghijkl',token:'b'.repeat(43)}));let complete;const service=new ShopIdentity(store,()=>new Promise(r=>{complete=r;}));const pending=service.check();service.forget();complete({ok:true,json:async()=>({self:{personId:'abcdefghijkl',name:'Old'}})});await assert.rejects(pending,/ondertussen gewijzigd/);assert.equal(service.saved(),null);
+});
