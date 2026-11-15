@@ -10,7 +10,7 @@ Publiceren: zie PUBLISHING.md.
 
 ### Optioneel verbinden met Sharon
 Shop blijft zelfstandig bruikbaar. Maak in Sharon → Notities en lijsten → Shop
-verbinden een code en kopieer die. Open in Shop via het Sharon-logo het menu en kies Koppelen met Sharon · plakken.
+verbinden een code en kopieer die. Open in Shop via het Sharon-logo het menu en kies Koppelen met Sharon.
 Alleen deze menuactie leest het klembord; het logo zelf leest niets.
 Na succesvolle koppeling verdwijnt dit item; verbinding beheren blijft beschikbaar.
 Een bestaande koppeling wordt nooit automatisch vervangen.
@@ -24,3 +24,5 @@ Vereist Sharon 0.4.81 en bijbehorende server/connections.php op
 https://sharon.life/log/api/connections.php. GitHub Pages uploadt dit bestand niet.
 Behoud de bestaande configuratie en private opslag. Browsers kunnen toestemming
 voor klembordlezen vragen; de app vraagt dit alleen na een bewuste klik.
+
+Het Sharon-logo opent een compact uitklapmenu. Uitgebreid beheer opent de beheerpagina. Producten, gerechten en activiteiten hebben hun toevoegactie in het eigen overzicht.

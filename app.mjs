@@ -1,7 +1,7 @@
-import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-menu';
-import {listSyncStatus} from './sync-status.mjs?v=20261115-menu';
-import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-menu';
-import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-menu';
+import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-compact';
+import {listSyncStatus} from './sync-status.mjs?v=20261115-compact';
+import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-compact';
+import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-compact';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 let cloudBusy=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -16,7 +16,8 @@ function categoryField(value){const l=el('label','Categorie','field'),s=el('sele
 function openModal(title,build,onSubmit,action='Bewaren'){$('#modalTitle').textContent=title;$('#modalBody').replaceChildren();$('#modalSave').textContent=action;build();$('#modalForm').onsubmit=e=>{e.preventDefault();try{if(onSubmit()!==false)closeModal();}catch(err){toast(err.message);}};$('#modal').showModal();}
 function closeModal(){stopDeck();stopCamera();$('#modal').close();}
 $('#closeModal').onclick=closeModal;$('#modal').addEventListener('close',()=>{stopCamera();stopDeck();});$('#modal').addEventListener('cancel',()=>{stopCamera();stopDeck();});
-function switchView(v){view=v;$('#contextNew').hidden=v==='lists';for(const id of ['home','lists','manage'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();}
+function closeMenu(){$('#appMenu').hidden=true;$('#manageLogo').setAttribute('aria-expanded','false');}
+function switchView(v){closeMenu();view=v;$('#contextNew').hidden=v==='lists';for(const id of ['home','lists','manage'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();}
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 function render(){
  renderContext();
@@ -78,10 +79,8 @@ function editProduct(p){if(!state.categories.length){toast('Voeg eerst een categ
  if(!codes.includes(value))codes.push(value);barcodes.value=codes.join(', ');
  toast('Barcode ingevuld. Kies Bewaren om te koppelen.');
  });},()=>{const value=name.value.trim();if(!value)throw Error('Vul een naam in.');if(state.products.some(x=>x.id!==p?.id&&norm(x.name)===norm(value)))throw Error('Deze productnaam bestaat al.');const codes=barcodes.value.split(',').map(s=>s.trim()).filter(Boolean);if(codes.some(b=>state.products.some(x=>x.id!==p?.id&&x.barcodes.includes(b))))throw Error('Een barcode is al gekoppeld aan een ander product.');if(!['plain','amount','note'].includes(input.value))throw Error('Kies Standaard, Aantal of Omschrijving.');if(p){moveEntry('product',p.id,p.categoryId,category.value);Object.assign(p,{name:value,categoryId:category.value,barcodes:codes,input:input.value,favorite:favorite.checked});}else{const item={id:uid(),name:value,categoryId:category.value,barcodes:codes,input:input.value,favorite:favorite.checked};state.products.push(item);cat(category.value).entries.push({type:'product',id:item.id});}save();render();});}
-$('#newProduct').onclick=()=>editProduct();
 $('#newCategory').onclick=()=>{let name;openModal('Nieuwe categorie',()=>name=field('Naam','text'),()=>{const value=name.value.trim();if(!value||state.categories.some(c=>norm(c.name)===norm(value)))throw Error('Kies een unieke categorienaam.');const c={id:uid(),name:value,entries:[]};state.categories.push(c);const home=state.categories.find(c=>c.name==='Home');if(home)home.entries.push({type:'category',id:c.id});save();render();});};
 function editRecipe(r,kind='recipe'){if(!state.categories.length){toast('Voeg eerst een categorie toe.');return;}let name,category,ingredients;openModal(r?.kind==='activity'||kind==='activity'?'Activiteit bewerken':r?'Gerecht bewerken':'Nieuw gerecht',()=>{name=field('Naam','text',r?.name||'');category=categoryField(r?.categoryId);$('#modalBody').append(el('p','Eén ingrediënt per regel: aantal | productnaam | notitie. Nieuwe productnamen worden toegevoegd.','hint'));ingredients=el('textarea');ingredients.setAttribute('aria-label','Ingrediënten');ingredients.value=r?.ingredients.map(i=>`${i.quantity} | ${prod(i.productId).name} | ${i.note}`).join('\n')||'';$('#modalBody').append(ingredients);},()=>{if(!name.value.trim())throw Error('Vul een naam in.');const lines=ingredients.value.split('\n').filter(x=>x.trim()).map(line=>{const [q,n,...note]=line.split('|').map(s=>s.trim());if(!n||!Number.isFinite(Number(q))||Number(q)<=0)throw Error('Gebruik: 1 | productnaam | notitie');return {quantity:Number(q),name:n,note:note.join(' | ')};});const result=lines.map(i=>{let p=state.products.find(p=>norm(p.name)===norm(i.name));if(!p){p={id:uid(),name:i.name,categoryId:category.value,barcodes:[],input:'plain'};state.products.push(p);cat(category.value).entries.push({type:'product',id:p.id});}return {productId:p.id,quantity:i.quantity,note:i.note};});if(r){moveEntry('recipe',r.id,r.categoryId,category.value);Object.assign(r,{name:name.value.trim(),categoryId:category.value,ingredients:result});}else{const item={id:uid(),kind,name:name.value.trim(),categoryId:category.value,ingredients:result};state.recipes.push(item);cat(category.value).entries.push({type:'recipe',id:item.id});}save();render();});}
-$('#newRecipe').onclick=()=>editRecipe();
 function download(name,text){const url=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('#backup').onclick=()=>{if(saveBlocked){download('bs-oorspronkelijke-opslag.json',localStorage.getItem(KEY)||'');return;}download('bs-backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2));};
 function importFile(mode){const file=$('#file');file.accept=mode==='list'?'.csv,.json,text/csv,application/json':'.json';file.value='';file.onchange=async()=>{try{const selected=file.files?.[0];if(!selected)return;const text=await selected.text();if(mode==='list'){if(saveBlocked)throw Error('Herstel eerst je bestaande opslag.');state=importListFile(state,text,selected.name);activeList=state.activeListId||activeList;}else{const restored=validate(JSON.parse(text));if(!confirm('Je huidige gegevens vervangen door deze back-up?'))return;state=restored;activeList=state.lists[0]?.id;path=[];saveBlocked=false;}if(!save())throw Error('Opslaan mislukt. Je bestand is niet blijvend geïmporteerd.');render();toast('Gegevens ingeladen');}catch(e){toast(e.message);}};file.click();}
@@ -214,6 +213,7 @@ function renderHome(){
  const heading=el('div',undefined,'sectionHeading');heading.append(el('h2',titles[homeSection]));target.append(heading);
  if(homeSection==='mylist'){renderHomeList(target);return;}
  if(homeSection==='products'){
+  heading.append(btn('+ Product',()=>editProduct(),'quiet'));
   const order=['frequent','alphabetical','category'].includes(state.productOrder)?state.productOrder:'frequent';
   const sort=el('div',undefined,'productSort');sort.setAttribute('role','group');sort.setAttribute('aria-label','Producten sorteren');
   for(const [value,label]of [['frequent','Vaak nodig'],['alphabetical','A–Z'],['category','Categorie']]){const button=btn(label,()=>{state.productOrder=value;save();renderHome();});button.classList.toggle('active',order===value);button.setAttribute('aria-pressed',String(order===value));sort.append(button);}target.append(sort);
@@ -506,7 +506,7 @@ function pairingLabel(){
 }
 function openPairing(message=''){
  openModal('Verbinding met Sharon',()=>{
-  const body=$('#modalBody');body.append(el('p',message||'Kopieer in Sharon een koppelcode en kies in het menu ‘Koppelen met Sharon · plakken’. Je lokale lijsten worden niet automatisch gedeeld.','hint'));
+  const body=$('#modalBody');body.append(el('p',message||'Kopieer in Sharon een koppelcode en kies in het menu ‘Koppelen met Sharon’. Je lokale lijsten worden niet automatisch gedeeld.','hint'));
   const link=el('a','Open Sharon → Notities en lijsten → Shop verbinden');link.href='https://stefan-van-dijk.github.io/sharon/';link.target='_blank';link.rel='noopener';body.append(link);
   if(identity.saved())body.append(btn('Deze Shop loskoppelen',async()=>{try{if(identity.saved()?.confirmed)await identity.request('shop-device-revoke');identity.forget();pairingLabel();closeModal();toast('Shop werkt zelfstandig. Je lijsten zijn bewaard.');}catch(e){toast(e.message);}}));
  },()=>true,'Sluiten');
@@ -518,7 +518,7 @@ window.addEventListener('online',updateCloudStatus);
 if(new URLSearchParams(location.search).has('shoplist'))openSharonLists();
 
 function updateCloudStatus(){
- const logo=$('#manageLogo');if(logo){logo.classList.toggle('is-syncing',cloudBusy);logo.classList.toggle('needs-sync',!!list()?.cloud?.pending);logo.setAttribute('aria-busy',String(cloudBusy));logo.title=cloudBusy?'Synchroniseren…':'Beheer openen en synchroniseren';}
+ const logo=$('#manageLogo');if(logo){logo.classList.toggle('is-syncing',cloudBusy);logo.classList.toggle('needs-sync',!!list()?.cloud?.pending);logo.setAttribute('aria-busy',String(cloudBusy));logo.title=cloudBusy?'Synchroniseren…':'Menu openen en synchroniseren';}
  const button=$('#listSyncStatus');if(!button)return;
  const status=listSyncStatus(list(),{online:navigator.onLine,busy:cloudBusy});button.textContent=status.label;button.dataset.state=status.state;button.title=status.detail;button.setAttribute('aria-label',status.label+'. '+status.detail);
 }
@@ -529,11 +529,15 @@ setInterval(updateCloudStatus,10000);
 updateCloudStatus();syncCloud();
 
 const clipboardPairing=new ClipboardPairing(identity,{
- show:(label,error)=>{const item=$('#pairFromClipboard');item.hidden=!!identity.saved()?.confirmed;item.textContent='Koppelen met Sharon · plakken';item.title=error||'';$('#pairClipboardMessage').textContent=error||(!label&&!identity.saved()?.confirmed?'Geen geldige koppelcode gevonden. Kopieer eerst een code in Sharon.':'');},
+ show:(label,error)=>{const item=$('#pairFromClipboard');item.hidden=!!identity.saved()?.confirmed;item.textContent='Koppelen met Sharon';item.title=error||'';$('#pairClipboardMessage').textContent=error||(!label&&!identity.saved()?.confirmed?'Geen geldige koppelcode gevonden. Kopieer eerst een code in Sharon.':'');},
  success:self=>{pairingLabel();toast('Verbonden met Sharon · '+self.name);syncCloud();}
 });
 $('#pairFromClipboard').onclick=async()=>{const result=clipboardPairing.connect();$('#manageLogo').classList.add('is-syncing');try{await result;}finally{updateCloudStatus();}};
 $('#manageLogo').onclick=()=>{
- switchView('manage');pairingLabel();
- if(identity.saved()?.confirmed)syncCloud();
+ const opening=$('#appMenu').hidden;$('#appMenu').hidden=!opening;$('#manageLogo').setAttribute('aria-expanded',String(opening));pairingLabel();
+ if(opening&&identity.saved()?.confirmed)syncCloud();
 };
+
+document.addEventListener('click',event=>{if(!event.target.closest('#appMenu,#manageLogo'))closeMenu();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appMenu').hidden){closeMenu();$('#manageLogo').focus();}});
+$('#appMenu').addEventListener('click',event=>{if(event.target.closest('#sharonLists,#sharonConnection'))closeMenu();});
