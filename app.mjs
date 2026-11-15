@@ -1,6 +1,6 @@
-import {listSyncStatus} from './sync-status.mjs?v=20261114-shop2';
-import {connectSharon,snapshot,installSnapshot} from './sharon.mjs?v=20261114-shop2';
-import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261114-shop2';
+import {listSyncStatus} from './sync-status.mjs?v=20261115-pair1';
+import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-pair1';
+import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-pair1';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 let cloudBusy=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -498,14 +498,25 @@ async function openSharonLists(){
    }));
    const link=el('a','Delen en toegang beheren in Sharon');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
   },()=>true,'Sluiten');
- }catch(e){
-  openModal('Verbinden met Sharon',()=>{
-   $('#modalBody').append(el('p',e.message,'hint'));
-   const link=el('a','Open Sharon · Personen');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
-   $('#modalBody').append(el('p','Verbind je identiteit in Sharon en kom daarna terug om deze lijst te koppelen. Je lokale lijst blijft bewaard.','hint'));
-  },()=>true,'Sluiten');
- }
+ }catch(e){openPairing(e.message);}
 }
+function pairingLabel(){
+ const saved=identity.saved();$('#sharonConnection').textContent=saved?.confirmed?'Sharon · gekoppeld (controleren)':saved?'Sharon · bevestiging nodig':'Zelfstandig · verbind met Sharon';
+}
+function openPairing(message=''){
+ openModal('Shop verbinden met Sharon',()=>{
+  const body=$('#modalBody'),status=el('p',message||(identity.saved()?.fingerprint&&!identity.saved()?.confirmed?'Controlecode '+identity.saved().fingerprint+'. Bevestig deze in Sharon.':'')||'Je lokale lijsten blijven privé. Koppel alleen als je lijsten via Sharon wilt gebruiken.','hint');status.setAttribute('role','status');body.append(status);
+  const link=el('a','Open Sharon → Notities en lijsten → Shop verbinden');link.href='https://stefan-van-dijk.github.io/sharon/';link.target='_blank';link.rel='noopener';body.append(link);
+  if(!identity.saved()?.confirmed){
+   const input=el('input');input.placeholder='Plak tijdelijke koppelcode';input.setAttribute('aria-label','Tijdelijke koppelcode');input.autocomplete='off';input.spellcheck=false;
+   const claim=btn('Koppelen',async()=>{claim.disabled=true;try{const r=await identity.claim(input.value);input.value='';status.textContent='Controlecode '+r.fingerprint+'. Bevestig dezelfde code in Sharon en klik daarna hier op Verbinding controleren.';pairingLabel();}catch(e){status.textContent=e.message;}finally{claim.disabled=false;}});body.append(input,claim);
+  }
+  const check=btn('Verbinding controleren',async()=>{check.disabled=true;try{const self=await identity.check();status.textContent='Verbonden met Sharon · '+self.name+'. Lokale lijsten worden pas gedeeld als je ze zelf verbindt.';pairingLabel();}catch(e){status.textContent=e.message;}finally{check.disabled=false;}});body.append(check);
+  body.append(btn('Gedeelde lijsten openen',openSharonLists));
+  if(identity.saved())body.append(btn('Deze Shop loskoppelen',async()=>{try{if(identity.saved()?.confirmed)await identity.request('shop-device-revoke');identity.forget();pairingLabel();openPairing('Shop werkt nu zelfstandig. Je lokale lijsten zijn bewaard.');}catch(e){status.textContent=e.message;}}));
+ },()=>true,'Sluiten');
+}
+$('#sharonConnection').onclick=()=>openPairing();pairingLabel();
 $('#sharonLists').onclick=openSharonLists;
 
 window.addEventListener('online',updateCloudStatus);

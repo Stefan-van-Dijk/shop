@@ -1,14 +1,8 @@
-// Identity stays in Sharon's existing same-origin IndexedDB; never in a URL.
-let service;
+import {ShopIdentity} from './pairing.mjs';
+export const identity=new ShopIdentity();
 export async function connectSharon(){
- if(location.origin!=='https://stefan-van-dijk.github.io')throw Error('Open ShopList en Sharon op hun GitHub Pages-adres om dezelfde identiteit te gebruiken.');
- if(!service){
-  const [{ObjectStore},{ShopListService}]=await Promise.all([
-   import('/sharon/src/core/storage/ObjectStore.js?v=0.4.78'),
-   import('/sharon/src/core/shoplist/ShopListService.js?v=0.4.78')]);
-  service=new ShopListService(await new ObjectStore().open());
- }
- return service;
+ await identity.check();
+ return {index:()=>identity.request('shoplist-index'),read:id=>identity.request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>identity.request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
 }
 export function snapshot(state,list){
  const source=[...new Set(list.items.map(i=>i.productId))].map(id=>state.products.find(p=>p.id===id));
