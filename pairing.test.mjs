@@ -21,3 +21,9 @@ test('A late verification cannot restore a disconnected identity',async()=>{
 test('Compact pairing acknowledges durable local storage before reporting connected',async()=>{
  const store=storage(),actions=[];const service=new ShopIdentity(store,async(u,o)=>{const body=JSON.parse(o.body);actions.push(body.action);if(body.action==='shop-pair-redeem')return {ok:true,json:async()=>({id:'device',self:{personId:'abcdefghijkl',name:'Test'}})};if(body.action==='shop-device-self')return {ok:true,json:async()=>({self:{personId:'abcdefghijkl',name:'Test'},needsAck:true})};assert.equal(service.saved().self.name,'Test');assert.equal(service.saved().confirmed,false);return {ok:true,json:async()=>({ok:true})};});await service.redeem('abcdefghijkl');assert.deepEqual(actions,['shop-pair-redeem','shop-device-self','shop-device-ack']);assert.equal(service.saved().confirmed,true);
 });
+test('A replacement code gets a different key but a retry retains the same key',async()=>{
+ const store=storage(),keys=[];const service=new ShopIdentity(store,async(u,o)=>{keys.push(JSON.parse(o.body).deviceToken);throw new TypeError('offline');});await assert.rejects(service.redeem('abcdefghijkl'));await assert.rejects(service.redeem('abcdefghijkl'));await assert.rejects(service.redeem('mnopqrstuvwx'));assert.equal(keys[0],keys[1]);assert.notEqual(keys[1],keys[2]);assert.ok(!store.getItem(PAIR_KEY).includes('mnopqrstuvwx'));
+});
+test('Failed local identity save sends no receipt acknowledgement',async()=>{
+ const store=storage();let ack=false;const service=new ShopIdentity(store,async(u,o)=>{const action=JSON.parse(o.body).action;if(action==='shop-pair-redeem'){store.setItem=()=>{throw Error('disk full');};return {ok:true,json:async()=>({id:'device',self:{personId:'abcdefghijkl',name:'Test'}})};}ack=true;});await assert.rejects(service.redeem('abcdefghijkl'),/disk full/);assert.equal(ack,false);assert.equal(service.saved().confirmed,false);
+});

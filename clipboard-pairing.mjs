@@ -6,7 +6,7 @@ export class ClipboardPairing {
   if(this.busy)return;this.busy=true;
   try{
    if(this.identity.saved()?.confirmed){this.show(null);return;}
-   if(this.identity.saved()?.compact&&this.identity.saved()?.self){const self=await this.identity.check();this.show(null);this.success(self);return;}
+   if(this.identity.saved()?.compact&&this.identity.saved()?.self){try{const self=await this.identity.check();this.show(null);this.success(self);return;}catch(e){if(['pair_expired','unauthorized'].includes(e.code))this.identity.forget();throw e;}}
    // Call before the first await to preserve Safari's transient activation.
    const reading=this.read();const text=String(await reading).trim();this.code=null;
    if(!/^[A-Za-z0-9_-]{12}$/.test(text)){this.show(null);return;}
