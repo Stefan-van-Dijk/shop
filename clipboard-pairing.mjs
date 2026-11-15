@@ -1,4 +1,4 @@
-// The clipboard is read only inside the explicit logo/menu click. Ordinary text
+// The clipboard is read only inside the explicit pairing menu click. Ordinary text
 // never reaches the server or persistent storage; a probe cannot consume a code.
 export class ClipboardPairing {
  constructor(identity,{read=()=>navigator.clipboard.readText(),show=()=>{},success=()=>{}}={}){Object.assign(this,{identity,read,show,success});this.code=null;this.busy=false;}

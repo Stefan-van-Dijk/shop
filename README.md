@@ -10,8 +10,8 @@ Publiceren: zie PUBLISHING.md.
 
 ### Optioneel verbinden met Sharon
 Shop blijft zelfstandig bruikbaar. Maak in Sharon → Notities en lijsten → Shop
-verbinden een code en kopieer die. Druk in Shop op het Sharon-logo. Alleen bij een
-passende code of benodigde toestemming verschijnt tijdelijk Koppelen met Sharon.
+verbinden een code en kopieer die. Open in Shop via het Sharon-logo het menu en kies Koppelen met Sharon · plakken.
+Alleen deze menuactie leest het klembord; het logo zelf leest niets.
 Na succesvolle koppeling verdwijnt dit item; verbinding beheren blijft beschikbaar.
 Een bestaande koppeling wordt nooit automatisch vervangen.
 

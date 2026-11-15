@@ -1,7 +1,7 @@
-import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-pair2';
-import {listSyncStatus} from './sync-status.mjs?v=20261115-pair2';
-import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-pair2';
-import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-pair2';
+import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-menu';
+import {listSyncStatus} from './sync-status.mjs?v=20261115-menu';
+import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-menu';
+import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-menu';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 let cloudBusy=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -502,11 +502,11 @@ async function openSharonLists(){
  }catch(e){openPairing(e.message);}
 }
 function pairingLabel(){
- const saved=identity.saved();$('#sharonConnection').hidden=!saved?.confirmed;$('#sharonConnection').textContent='Sharon · verbinding beheren';if(saved?.confirmed)$('#pairFromClipboard').hidden=true;
+ const saved=identity.saved();$('#sharonConnection').hidden=!saved?.confirmed;$('#sharonConnection').textContent='Sharon · verbinding beheren';$('#pairFromClipboard').hidden=!!saved?.confirmed;
 }
 function openPairing(message=''){
  openModal('Verbinding met Sharon',()=>{
-  const body=$('#modalBody');body.append(el('p',message||'Kopieer in Sharon een koppelcode en druk hier op het Sharon-logo. Je lokale lijsten worden niet automatisch gedeeld.','hint'));
+  const body=$('#modalBody');body.append(el('p',message||'Kopieer in Sharon een koppelcode en kies in het menu ‘Koppelen met Sharon · plakken’. Je lokale lijsten worden niet automatisch gedeeld.','hint'));
   const link=el('a','Open Sharon → Notities en lijsten → Shop verbinden');link.href='https://stefan-van-dijk.github.io/sharon/';link.target='_blank';link.rel='noopener';body.append(link);
   if(identity.saved())body.append(btn('Deze Shop loskoppelen',async()=>{try{if(identity.saved()?.confirmed)await identity.request('shop-device-revoke');identity.forget();pairingLabel();closeModal();toast('Shop werkt zelfstandig. Je lijsten zijn bewaard.');}catch(e){toast(e.message);}}));
  },()=>true,'Sluiten');
@@ -529,12 +529,11 @@ setInterval(updateCloudStatus,10000);
 updateCloudStatus();syncCloud();
 
 const clipboardPairing=new ClipboardPairing(identity,{
- show:(label,error)=>{const item=$('#pairFromClipboard');item.hidden=!label;item.textContent=label||'';item.title=error||'';$('#pairClipboardMessage').textContent=label&&error?error:'';},
+ show:(label,error)=>{const item=$('#pairFromClipboard');item.hidden=!!identity.saved()?.confirmed;item.textContent='Koppelen met Sharon · plakken';item.title=error||'';$('#pairClipboardMessage').textContent=error||(!label&&!identity.saved()?.confirmed?'Geen geldige koppelcode gevonden. Kopieer eerst een code in Sharon.':'');},
  success:self=>{pairingLabel();toast('Verbonden met Sharon · '+self.name);syncCloud();}
 });
-async function inspectPairing(){const checking=clipboardPairing.inspect();$('#manageLogo').classList.add('is-syncing');try{await checking;}finally{updateCloudStatus();}}
 $('#pairFromClipboard').onclick=async()=>{const result=clipboardPairing.connect();$('#manageLogo').classList.add('is-syncing');try{await result;}finally{updateCloudStatus();}};
 $('#manageLogo').onclick=()=>{
- const checking=identity.saved()?.confirmed?null:inspectPairing();switchView('manage');
- if(!checking)syncCloud();
+ switchView('manage');pairingLabel();
+ if(identity.saved()?.confirmed)syncCloud();
 };
