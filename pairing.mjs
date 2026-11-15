@@ -8,7 +8,19 @@ export class ShopIdentity {
  saved(){try{return JSON.parse(this.storage.getItem(PAIR_KEY)||'null');}catch{return null;}}
  async request(action,input={},credential=this.saved()?.token){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
-  try{const response=await this.fetcher(ENDPOINT,{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{'Content-Type':'application/json',...(credential?{'X-Log-Access-Token':credential}:{})},body:JSON.stringify({protocol:'sharon-network-v1',action,...input})});const data=await response.json();if(!response.ok)throw Error(messages[data.error]||'De verbinding kon niet worden uitgevoerd. Je lokale lijsten blijven bewaard.');return data;}catch(e){if(e.name==='AbortError'||e.name==='TypeError')throw Error('Sharon is niet bereikbaar. Je lokale lijsten blijven bewaard.');throw e;}finally{clearTimeout(timer);}
+  try{const response=await this.fetcher(ENDPOINT,{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{'Content-Type':'application/json',...(credential?{'X-Log-Access-Token':credential}:{})},body:JSON.stringify({protocol:'sharon-network-v1',action,...input})});const data=await response.json();if(!response.ok){const error=Error(messages[data.error]||'De verbinding kon niet worden uitgevoerd. Je lokale lijsten blijven bewaard.');error.code=data.error;throw error;}return data;}catch(e){if(e.name==='AbortError'||e.name==='TypeError')throw Error('Sharon is niet bereikbaar. Je lokale lijsten blijven bewaard.');throw e;}finally{clearTimeout(timer);}
+ }
+ async probe(value){if(!/^[A-Za-z0-9_-]{12}$/.test(value))return false;return (await this.request('shop-pair-probe',{code:value},null)).valid===true;}
+ async redeem(code){
+  if(!/^[A-Za-z0-9_-]{12}$/.test(code))throw Error('Geen geldige koppelcode.');
+  const codeTag=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(code))),b=>b.toString(16).padStart(2,'0')).join('');
+  let saved=this.saved();if(saved?.confirmed)throw Error('Shop is al gekoppeld.');
+  // Persist the device key before contacting the server. Never persist clipboard text.
+  if(!saved?.compact||saved.codeTag!==codeTag){saved={token:token(),compact:true,codeTag,confirmed:false};this.storage.setItem(PAIR_KEY,JSON.stringify(saved));}
+  const result=await this.request('shop-pair-redeem',{code,deviceToken:saved.token},null);
+  if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');
+  this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,id:result.id,self:result.self}));
+  return this.check();
  }
  async claim(value){
   const code=parsePairCode(value);let saved=this.saved();
@@ -16,6 +28,11 @@ export class ShopIdentity {
   if(saved?.id!==code.id){saved={id:code.id,token:token(),confirmed:false};this.storage.setItem(PAIR_KEY,JSON.stringify(saved));}
   const result=await this.request('shop-pair-claim',{...code,deviceToken:saved.token},null);if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,fingerprint:result.fingerprint}));return result;
  }
- async check(){const saved=this.saved();if(!saved?.token)throw Error('Shop werkt zelfstandig. Plak een koppelcode om Sharon te verbinden.');const result=await this.request('shop-device-self',{},saved.token);if(!result.self?.personId||!result.self?.name)throw Error('Ongeldig serverantwoord.');if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,confirmed:true,self:result.self}));return result.self;}
+ async check(){const saved=this.saved();if(!saved?.token)throw Error('Shop werkt zelfstandig. Plak een koppelcode om Sharon te verbinden.');const result=await this.request('shop-device-self',{},saved.token);if(!result.self?.personId||!result.self?.name)throw Error('Ongeldig serverantwoord.');if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');if(result.needsAck||saved.compact){
+   this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,self:result.self}));
+   await this.request('shop-device-ack',{},saved.token);
+   if(this.saved()?.token!==saved.token)throw Error('De koppeling is ondertussen gewijzigd.');
+  }
+  this.storage.setItem(PAIR_KEY,JSON.stringify({...saved,confirmed:true,self:result.self}));return result.self;}
  forget(){this.storage.removeItem(PAIR_KEY);}
 }
