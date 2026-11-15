@@ -25,3 +25,6 @@ Behoud de bestaande configuratie en private opslag. Browsers kunnen toestemming
 voor klembordlezen vragen; de app vraagt dit alleen na een bewuste klik.
 
 Het Sharon-logo opent een compact uitklapmenu. Uitgebreid beheer opent de beheerpagina. Producten, gerechten en activiteiten hebben hun toevoegactie in het eigen overzicht.
+
+### Installeren
+Via het appmenu → ShopList op je beginscherm, of via `?install=1`, verschijnt installatiehulp. Een browser die `beforeinstallprompt` aanbiedt toont een echte installatieknop. Op iPhone staan de Safari-stappen in beeld. `appinstalled` en standalone-weergave gelden als installatiebewijs; een koppeling met Sharon niet. Het manifest heeft een eigen scope en icoon. Installatie voegt op zichzelf geen offline- of accountsynchronisatie toe.
