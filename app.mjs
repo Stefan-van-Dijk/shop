@@ -1,7 +1,7 @@
-import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-compact';
-import {listSyncStatus} from './sync-status.mjs?v=20261115-compact';
-import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-compact';
-import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-compact';
+import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
+import {listSyncStatus} from './sync-status.mjs?v=20261115-list-lifecycle';
+import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-list-lifecycle';
+import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 let cloudBusy=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -22,7 +22,7 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.d
 function render(){
  renderContext();
  $('#welcome').hidden=state.products.length>0||view!=='shop';$('#count').textContent=list()?.items.filter(i=>!i.done).length||0;
- const sel=$('#listSelect');sel.replaceChildren();state.lists.forEach(l=>{const o=el('option',l.name);o.value=l.id;sel.append(o);});sel.value=activeList||'';
+ const sel=$('#listSelect');sel.replaceChildren();state.lists.filter(l=>!l.archived).forEach(l=>{const o=el('option',l.name);o.value=l.id;sel.append(o);});sel.value=activeList||'';
  if(view==='home')renderHome();if(view==='lists')renderList($('#listRows'),$('#onlyNeeded').checked);if(view==='manage')renderManage();
 }
 function ensureList(){if(!list()){const l={id:uid(),name:'Boodschappen',items:[]};state.lists.push(l);activeList=l.id;}}
@@ -65,7 +65,7 @@ function renderList(target=$('#listRows'),neededOnly=false){target.replaceChildr
 $('#manageSearch').oninput=renderManage;$('#listSelect').onchange=e=>{activeList=e.target.value;save();render();};
 $('#newList').onclick=()=>{let name;openModal('Nieuwe lijst',()=>name=field('Naam','text'),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');const l={id:uid(),name:name.value.trim(),items:[]};state.lists.push(l);activeList=l.id;save();render();});};
 $('#renameList').onclick=()=>{if(!list())return;let name;openModal('Lijst hernoemen',()=>name=field('Naam','text',list().name),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');list().name=name.value.trim();save();render();});};
-$('#deleteList').onclick=$('#contextDelete').onclick=()=>{const removed=list();if(!removed)return;openModal('Lijst verwijderen',()=>$('#modalBody').append(el('p','“'+removed.name+'” verwijderen? De producten blijven in je verzameling.')),()=>{state.deletedLists=state.deletedLists||[];state.deletedLists.push({...removed,deletedAt:Date.now()});state.lists=state.lists.filter(l=>l.id!==removed.id);activeList=state.lists[0]?.id;save();render();},'Verwijderen');};
+$('#deleteList').onclick=$('#contextDelete').onclick=()=>{const removed=list();if(!removed)return;let busy=false;openModal('Lijst verwijderen',()=>$('#modalBody').append(el('p','“'+removed.name+'” uit jouw overzicht verwijderen? Andere deelnemers behouden toegang. De laatste deelnemer verwijdert de lijst volledig.')),()=>{if(busy)return false;busy=true;$('#modalSave').disabled=true;(async()=>{try{if(removed.cloud)await (await connectSharon()).leave(removed.id);else{state.deletedLists=state.deletedLists||[];state.deletedLists.push({...removed,deletedAt:Date.now()});}state.lists=state.lists.filter(l=>l.id!==removed.id);activeList=state.lists.find(l=>!l.archived)?.id;save();render();closeModal();}catch(e){toast(e.message);}finally{busy=false;$('#modalSave').disabled=false;}})();return false;},'Verwijderen');};
 $('#restoreList').onclick=()=>{const removed=state.deletedLists?.pop();if(!removed){toast('Geen verwijderde lijst om terug te zetten.');return;}delete removed.deletedAt;state.lists.push(removed);activeList=removed.id;save();render();toast('Lijst teruggezet.');};
 $('#findDuplicates').onclick=reviewSimilarProducts;
 
@@ -195,7 +195,7 @@ loadPublishedCatalog();
 
 function renderContext(){
  updateCloudStatus();
- const select=$('#activeListSelect');select.replaceChildren();for(const l of state.lists){const o=el('option',l.name);o.value=l.id;select.append(o);}select.value=activeList||'';
+ const select=$('#activeListSelect');select.replaceChildren();for(const l of state.lists.filter(l=>!l.archived)){const o=el('option',l.name);o.value=l.id;select.append(o);}select.value=activeList||'';
  const n=list()?.items.filter(i=>!i.done).length||0;$('#count').textContent=n;$('#contextCount').textContent=n===1?'1 product nodig':n+' producten nodig';
 }
 function productControl(p){
@@ -448,8 +448,27 @@ function markCloudChanges(){
 async function syncCloud(){
  if(cloudBusy||saveBlocked||document.hidden)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
-  const linked=state.lists.filter(l=>l.cloud);if(!linked.length)return;
-  const api=await connectSharon();
+  if(!identity.saved()?.confirmed)return;
+  const api=await connectSharon(),remote=await api.index();
+  // Resolve membership before uploads, so a removed list cannot be recreated.
+  for(const l of [...state.lists.filter(l=>l.cloud)]){
+   const row=remote.lists.find(r=>r.id===l.id);
+   if(!row){
+    if(l.cloud.pending){const copy=structuredClone(l);copy.id=uid();copy.name+=' (lokale wijzigingen)';delete copy.cloud;copy.archived=true;state.lists.push(copy);}
+    state.lists=state.lists.filter(r=>r!==l);
+   }else {l.archived=!!row.archived;l.cloud.role=row.role;}
+  }
+  for(const row of remote.lists){if(state.lists.some(l=>l.id===row.id))continue;const response=await api.read(row.id),payload=response.list.payload;validate({schemaVersion:1,...payload,recipes:[],lists:[payload.list]});installSnapshot(state,payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(payload),confirmedAt:Date.now()}).archived=!!row.archived;}
+  // Linking makes every local list available to this identity; sharing stays explicit.
+  for(const l of state.lists.filter(l=>!l.cloud&&!l.archived)){
+   const payload=snapshot(state,l);let response;
+   try{response=await api.write(payload,0,crypto.randomUUID(),true);}catch(e){if(e.code!=='list_exists')throw e;response=await api.read(l.id);if(JSON.stringify(response.list.payload)!==JSON.stringify(payload)){const oldId=l.id;l.id=uid();if(activeList===oldId)activeList=l.id;continue;}}
+   l.cloud={revision:response.list.revision,role:response.role||'owner',base:JSON.stringify(payload),confirmedAt:Date.now()};markCloudChanges();
+   localStorage.setItem(KEY,JSON.stringify(state));
+  }
+  if(!state.lists.some(l=>l.id===activeList&&!l.archived))activeList=state.lists.find(l=>!l.archived)?.id;
+  localStorage.setItem(KEY,JSON.stringify(state));render();
+  const linked=state.lists.filter(l=>l.cloud&&!l.archived);
   for(const l of linked){
    syncingList=l;
    if(l.cloud.conflict)continue;
@@ -464,7 +483,7 @@ async function syncCloud(){
     if(response.list.revision!==l.cloud.revision){
      const payload=response.list.payload;
      validate({schemaVersion:1,...payload,recipes:[],lists:[payload.list]});
-     installSnapshot(state,payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(payload),confirmedAt:Date.now()});
+     installSnapshot(state,payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(payload),confirmedAt:Date.now()}).archived=l.archived;
      localStorage.setItem(KEY,JSON.stringify(state));render();
     }else localStorage.setItem(KEY,JSON.stringify(state));
    }
@@ -489,7 +508,10 @@ async function openSharonLists(){
    if(current&&!current.cloud)$('#modalBody').append(btn('Deze lijst verbinden',async()=>{
     try{const payload=snapshot(state,current);const response=await api.write(payload,0,crypto.randomUUID(),true);current.cloud={revision:response.list.revision,role:'owner',base:JSON.stringify(payload),confirmedAt:Date.now()};save();closeModal();toast('Lijst verbonden met Sharon');}catch(e){toast(e.message);}
    }));
-   for(const row of remote.lists)$('#modalBody').append(btn(row.name+' · openen / online versie ophalen',async()=>{
+   for(const saved of state.lists.filter(l=>l.archived&&!l.cloud))$('#modalBody').append(btn(saved.name+' · lokale archiefkopie terugzetten',()=>{saved.archived=false;activeList=saved.id;save();closeModal();render();}));
+   for(const row of remote.lists.filter(r=>r.archived))$('#modalBody').append(btn(row.name+' · terugzetten uit archief',async()=>{try{await api.archive(row.id,false);closeModal();await syncCloud();}catch(e){toast(e.message);}}));
+   if(current?.cloud)$('#modalBody').append(btn('Deze lijst archiveren',async()=>{try{await api.archive(current.id,true);closeModal();await syncCloud();}catch(e){toast(e.message);}}));
+   for(const row of remote.lists.filter(r=>!r.archived))$('#modalBody').append(btn(row.name+' · openen / online versie ophalen',async()=>{
     try{
      const existing=state.lists.find(l=>l.id===row.id);const response=await api.read(row.id),payload=response.list.payload;
      validate({schemaVersion:1,...payload,recipes:[],lists:[payload.list]});
@@ -526,6 +548,8 @@ $('#listSyncStatus').onclick=()=>{if(!list()?.cloud||list().cloud.conflict)openS
 window.addEventListener('offline',updateCloudStatus);
 document.addEventListener('visibilitychange',updateCloudStatus);
 setInterval(updateCloudStatus,10000);
+setInterval(()=>{if(!document.hidden&&!$('#modal').open)syncCloud();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncCloud();});
 updateCloudStatus();syncCloud();
 
 const clipboardPairing=new ClipboardPairing(identity,{
