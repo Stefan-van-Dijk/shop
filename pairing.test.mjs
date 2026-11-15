@@ -18,3 +18,6 @@ test('Pair codes accept only the fixed format, never a supplied endpoint',()=>{a
 test('A late verification cannot restore a disconnected identity',async()=>{
  const store=storage();store.setItem(PAIR_KEY,JSON.stringify({id:'abcdefghijkl',token:'b'.repeat(43)}));let complete;const service=new ShopIdentity(store,()=>new Promise(r=>{complete=r;}));const pending=service.check();service.forget();complete({ok:true,json:async()=>({self:{personId:'abcdefghijkl',name:'Old'}})});await assert.rejects(pending,/ondertussen gewijzigd/);assert.equal(service.saved(),null);
 });
+test('Compact pairing acknowledges durable local storage before reporting connected',async()=>{
+ const store=storage(),actions=[];const service=new ShopIdentity(store,async(u,o)=>{const body=JSON.parse(o.body);actions.push(body.action);if(body.action==='shop-pair-redeem')return {ok:true,json:async()=>({id:'device',self:{personId:'abcdefghijkl',name:'Test'}})};if(body.action==='shop-device-self')return {ok:true,json:async()=>({self:{personId:'abcdefghijkl',name:'Test'},needsAck:true})};assert.equal(service.saved().self.name,'Test');assert.equal(service.saved().confirmed,false);return {ok:true,json:async()=>({ok:true})};});await service.redeem('abcdefghijkl');assert.deepEqual(actions,['shop-pair-redeem','shop-device-self','shop-device-ack']);assert.equal(service.saved().confirmed,true);
+});
