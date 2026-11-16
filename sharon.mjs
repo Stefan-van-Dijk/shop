@@ -4,7 +4,7 @@ export async function connectSharon(){
  await identity.check();
  const credential=identity.saved().token;
  const request=(action,input={})=>{if(identity.saved()?.token!==credential)throw Error('De koppeling is ondertussen gewijzigd.');return identity.request(action,input,credential);};
- return {leave:id=>request('shoplist-leave',{id}),archive:(id,archived)=>request('shoplist-archive',{id,archived}),index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
+ return {catalog:()=>request('shopcatalog-read'),writeCatalog:(payload,revision,operation)=>request('shopcatalog-put',{payload,revision,operation}),leave:id=>request('shoplist-leave',{id}),archive:(id,archived)=>request('shoplist-archive',{id,archived}),index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
 }
 export function snapshot(state,list){
  const source=[...new Set(list.items.map(i=>i.productId))].map(id=>state.products.find(p=>p.id===id));
@@ -24,5 +24,14 @@ export function installSnapshot(state,payload,cloud){
  for(const p of products){const id=productMap.get(p.id),row={...p,id,remoteId:p.id,categoryId:categoryMap.get(p.categoryId)};const old=state.products.find(x=>x.id===id);if(old)Object.assign(old,row);else state.products.push(row);}
  const result={...list,items:list.items.map(i=>({...i,productId:productMap.get(i.productId)})),cloud};
  const index=state.lists.findIndex(l=>l.id===list.id);if(index<0)state.lists.push(result);else state.lists[index]=result;
+ // Drop obsolete per-list projections after an authoritative refresh. Retain
+ // anything still used by an independent list or a locally saved recipe.
+ const usedProducts=new Set(state.lists.flatMap(l=>l.items.map(i=>i.productId)));
+ for(const recipe of state.recipes||[])for(const item of recipe.ingredients)usedProducts.add(item.productId);
+ const currentProducts=new Set(productMap.values()),currentCategories=new Set(categoryMap.values());
+ state.products=state.products.filter(p=>!p.remoteId||p.id!==prefix+p.remoteId||currentProducts.has(p.id)||usedProducts.has(p.id));
+ const usedCategories=new Set(state.products.map(p=>p.categoryId));
+ for(const recipe of state.recipes||[])usedCategories.add(recipe.categoryId);
+ state.categories=state.categories.filter(c=>!c.remoteId||c.id!==prefix+c.remoteId||currentCategories.has(c.id)||usedCategories.has(c.id));
  return result;
 }

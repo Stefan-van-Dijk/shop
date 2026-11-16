@@ -1,9 +1,10 @@
+import {syncAccountCatalog} from './catalog-sync.mjs?v=20261116-account-catalog';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
 import {listSyncStatus} from './sync-status.mjs?v=20261115-list-lifecycle';
-import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261115-list-lifecycle';
+import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261116-account-catalog';
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
-let cloudBusy=false;
+let cloudBusy=false,catalogError='';
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw));}catch{saveBlocked=true;$('#saveStatus').textContent='Opgeslagen gegevens konden niet worden gelezen. Exporteer eerst je oorspronkelijke back-up.';}
 removeCategoryCycles(state.categories);const expanded=new Set();activeList=state.lists.find(l=>l.id===state.activeListId)?.id||state.lists[0]?.id;let timer;
@@ -449,7 +450,9 @@ async function syncCloud(){
  if(cloudBusy||saveBlocked||document.hidden)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
   if(!identity.saved()?.confirmed)return;
-  const api=await connectSharon(),remote=await api.index();
+  const api=await connectSharon();
+  try{await syncAccountCatalog(state,api,identity.saved()?.self?.personId,()=>localStorage.setItem(KEY,JSON.stringify(state)));catalogError='';}catch(error){if(catalogError!==error.message)toast(error.message);catalogError=error.message;}
+  const remote=await api.index();
   // Resolve membership before uploads, so a removed list cannot be recreated.
   for(const l of [...state.lists.filter(l=>l.cloud)]){
    const row=remote.lists.find(r=>r.id===l.id);
