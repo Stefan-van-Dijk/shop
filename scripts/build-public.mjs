@@ -4,7 +4,7 @@ import {resolve,dirname,extname} from 'node:path';
 const catalog=JSON.parse(readFileSync('data/catalog.json','utf8'));
 if(JSON.stringify(publicCatalog(catalog))!==JSON.stringify(catalog))throw Error('Publicatie geblokkeerd: privécategorie of persoonlijke lijsten in catalogus.');
 const out=resolve('public');rmSync(out,{recursive:true,force:true});mkdirSync(out);
-const files=['index.html','style.css',...readdirSync('.').filter(p=>p.endsWith('.mjs')&&!p.endsWith('.test.mjs'))];
+const files=['index.html','style.css','manifest.webmanifest',...readdirSync('.').filter(p=>p.endsWith('.mjs')&&!p.endsWith('.test.mjs'))];
 for(const path of [...files,'data','vendor','assets'])cpSync(path,resolve(out,path),{recursive:true});
 const seen=new Set();
 function verify(file){
