@@ -1,10 +1,11 @@
+import {fetchSelectedList} from './selected-list.mjs?v=20261116-selected-list';
 import {syncAccountCatalog} from './catalog-sync.mjs?v=20261116-account-catalog';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
 import {listSyncStatus} from './sync-status.mjs?v=20261115-list-lifecycle';
 import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261116-account-catalog';
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
-let cloudBusy=false,catalogError='';
+let cloudBusy=false,catalogError='',cloudTask=null,openingList=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw));}catch{saveBlocked=true;$('#saveStatus').textContent='Opgeslagen gegevens konden niet worden gelezen. Exporteer eerst je oorspronkelijke back-up.';}
 removeCategoryCycles(state.categories);const expanded=new Set();activeList=state.lists.find(l=>l.id===state.activeListId)?.id||state.lists[0]?.id;let timer;
@@ -446,7 +447,11 @@ function reviewSimilarProducts(){
 function markCloudChanges(){
  for(const l of state.lists){if(!l.cloud)continue;const payload=snapshot(state,l),json=JSON.stringify(payload);if(l.cloud.role==='read'){if(json!==l.cloud.base){const oldId=l.id;l.id=uid();l.name+=' (eigen kopie)';delete l.cloud;if(activeList===oldId)activeList=l.id;toast('Alleen leesrechten: je wijziging is als eigen kopie bewaard.');}continue;}if(json!==l.cloud.base&&json!==l.cloud.pending?.json)l.cloud.pending={json,operation:crypto.randomUUID()};}
 }
-async function syncCloud(){
+function syncCloud(){
+ if(openingList||cloudTask)return cloudTask;
+ cloudTask=runCloudSync().finally(()=>{cloudTask=null;});return cloudTask;
+}
+async function runCloudSync(){
  if(cloudBusy||saveBlocked||document.hidden)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
   if(!identity.saved()?.confirmed)return;
@@ -495,15 +500,19 @@ async function syncCloud(){
  }catch(error){for(const l of state.lists.filter(l=>l.cloud)){if(!syncingList||l===syncingList)l.cloud.error=error.message;}if(syncingList?.cloud&&/gedeelde lijst is gewijzigd|geen toegang|alleen bekijken/.test(error.message)){syncingList.cloud.conflict=true;localStorage.setItem(KEY,JSON.stringify(state));}$('#saveStatus').textContent='Lokaal bewaard · synchronisatie wacht';}
  finally{cloudBusy=false;updateCloudStatus();}
 }
-async function openSharonLists(){
+async function openSharonLists({fromLink=false}={}){
+ if(openingList)return;openingList=true;
  try{
+  await cloudTask;
+  if(saveBlocked)throw Error('Herstel eerst je bestaande opslag voordat je een online lijst opent.');
   const api=await connectSharon(),remote=await api.index();
-  const requested=new URLSearchParams(location.search).get('shoplist');
-  if(requested&&remote.lists.some(row=>row.id===requested)){
-   const existing=state.lists.find(l=>l.id===requested);
-   if(existing){activeList=requested;render();await syncCloud();}
-   else{const response=await api.read(requested),payload=response.list.payload;validate({schemaVersion:1,...payload,recipes:[],lists:[payload.list]});installSnapshot(state,payload,{revision:response.list.revision,role:response.role,base:JSON.stringify(payload),confirmedAt:Date.now()});activeList=requested;save();render();}
-   history.replaceState(history.state,'',location.pathname);return;
+  const requested=fromLink?new URLSearchParams(location.search).get('shoplist'):null;
+  if(requested){
+   if(!remote.lists.some(row=>row.id===requested&&!row.archived))throw Error('Deze lijst is niet beschikbaar. Open het Sharon-lijstenmenu om je toegang en archief te bekijken.');
+   await fetchSelectedList(state,api,requested);activeList=requested;
+   if(!save())throw Error('De lijst kon niet blijvend worden opgeslagen.');
+   closeModal();homeSection='mylist';switchView('lists');
+   const url=new URL(location.href);url.searchParams.delete('shoplist');history.replaceState(history.state,'',url.pathname+url.search+url.hash);return;
   }
   openModal('ShopList · Sharon',()=>{
    $('#modalBody').append(el('p','Deelrechten beheer je in Sharon. Bij een versieconflict blijft je lokale wijziging bewaard.','hint'));
@@ -524,7 +533,8 @@ async function openSharonLists(){
    }));
    const link=el('a','Delen en toegang beheren in Sharon');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
   },()=>true,'Sluiten');
- }catch(e){openPairing(e.message);}
+ }catch(e){if(identity.saved()?.confirmed)openModal('Lijst openen',()=>$('#modalBody').append(el('p',e.message)),()=>true,'Sluiten');else openPairing(e.message);}
+ finally{openingList=false;}
 }
 function pairingLabel(){
  const saved=identity.saved();$('#sharonConnection').hidden=!saved?.confirmed;$('#sharonConnection').textContent='Sharon · verbinding beheren';$('#pairFromClipboard').hidden=!!saved?.confirmed;
@@ -540,7 +550,7 @@ $('#sharonConnection').onclick=()=>openPairing();pairingLabel();
 $('#sharonLists').onclick=openSharonLists;
 
 window.addEventListener('online',updateCloudStatus);
-if(new URLSearchParams(location.search).has('shoplist'))openSharonLists();
+if(new URLSearchParams(location.search).has('shoplist'))openSharonLists({fromLink:true});
 
 function updateCloudStatus(){
  const logo=$('#manageLogo');if(logo){logo.classList.toggle('is-syncing',cloudBusy);logo.classList.toggle('needs-sync',!!list()?.cloud?.pending);logo.setAttribute('aria-busy',String(cloudBusy));logo.title=cloudBusy?'Synchroniseren…':'Menu openen en synchroniseren';}
@@ -557,7 +567,7 @@ updateCloudStatus();syncCloud();
 
 const clipboardPairing=new ClipboardPairing(identity,{
  show:(label,error)=>{const item=$('#pairFromClipboard');item.hidden=!!identity.saved()?.confirmed;item.textContent='Koppelen met Sharon';item.title=error||'';$('#pairClipboardMessage').textContent=error||(!label&&!identity.saved()?.confirmed?'Geen geldige koppelcode gevonden. Kopieer eerst een code in Sharon.':'');},
- success:self=>{pairingLabel();toast('Verbonden met Sharon · '+self.name);syncCloud();}
+ success:self=>{pairingLabel();toast('Verbonden met Sharon · '+self.name);if(new URLSearchParams(location.search).has('shoplist'))openSharonLists({fromLink:true});else syncCloud();}
 });
 $('#pairFromClipboard').onclick=async()=>{const result=clipboardPairing.connect();$('#manageLogo').classList.add('is-syncing');try{await result;}finally{updateCloudStatus();}};
 $('#manageLogo').onclick=()=>{
