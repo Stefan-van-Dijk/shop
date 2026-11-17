@@ -38,3 +38,16 @@ header{position:relative;z-index:6}.appMenu{position:absolute;right:28px;top:cal
 .from-sharon #shopMenuBrand{background:transparent;padding:0;min-height:44px;border-radius:0;font-size:36px;letter-spacing:-2px;font-weight:850;line-height:1;color:var(--ink)}
 .from-sharon .shopMenuAnchor .appMenu{right:0;top:calc(100% + 8px);max-width:calc(100vw - 36px)}
 .from-sharon .shopMenuAnchor .appMenu[hidden]{display:none}
+
+/* Inline vector logo: hard vector clips, no raster masks or blur. */
+.shop-loading-logo{display:block;width:32px;height:32px;overflow:visible}
+.from-sharon .sharonReturn .shop-loading-logo{width:26px;height:26px}
+.is-loading .logo-outer-arcs{transform-origin:0 0;animation:shop-logo-orbit 1.6s linear infinite}
+.is-loading .logo-inner-ring{animation:shop-logo-breathe 1.2s ease-in-out infinite alternate}
+@keyframes shop-logo-orbit{to{transform:rotate(360deg)}}
+@keyframes shop-logo-breathe{from{opacity:1}to{opacity:.45}}
+.sharonLogo.is-syncing::after{display:none}
+@media(prefers-reduced-motion:reduce){
+ .is-loading .logo-outer-arcs,.is-loading .logo-inner-ring{animation:none}
+ .is-loading .shop-loading-logo{outline:2px dotted #687742;outline-offset:4px;border-radius:50%}
+}
