@@ -1,21 +1,21 @@
 import {readLaunchContext} from './launch-context.mjs?v=20261117';
-import {fetchSelectedList} from './selected-list.mjs?v=20261116-selected-list';
+import {fetchSelectedList} from './selected-list.mjs?v=20261117-session';
 import {syncAccountCatalog} from './catalog-sync.mjs?v=20261116-account-catalog';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
 import {listSyncStatus} from './sync-status.mjs?v=20261115-list-lifecycle';
-import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261116-account-catalog';
+import {connectSharon,identity,embedded,snapshot,installSnapshot} from './sharon.mjs?v=20261117-session';
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 const launch=readLaunchContext(location.href);
-if(launch.compact){document.body.classList.add('from-sharon');const back=el('button','← Sharon','quiet');back.id='returnSharon';back.onclick=()=>{if(window.parent!==window)window.parent.postMessage({type:'shop:return'},launch.hostOrigin);else location.href=launch.returnUrl;};document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);}
+if(launch.compact){document.body.classList.add('from-sharon');const back=el('button','← Sharon','quiet');back.id='returnSharon';back.onclick=()=>{if(window.parent!==window)window.parent.postMessage({type:'shop:return'},launch.hostOrigin);else location.href=launch.returnUrl;};document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
 let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
 if(launchPending)document.querySelector('main').inert=true;
 let cloudBusy=false,catalogError='',cloudTask=null,openingList=false;
-let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
+let homeSection='mylist',productCategory='',homeFilter='needed';const KEY=embedded?'shop.embedded.v1:'+(new URLSearchParams(location.search).get('account')||'unknown')+':'+(new URLSearchParams(location.search).get('shoplist')||'new'):'bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:embedded?[]:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw));}catch{saveBlocked=true;$('#saveStatus').textContent='Opgeslagen gegevens konden niet worden gelezen. Exporteer eerst je oorspronkelijke back-up.';}
 removeCategoryCycles(state.categories);const expanded=new Set();activeList=state.lists.find(l=>l.id===state.activeListId)?.id||state.lists[0]?.id;let timer;
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';clearTimeout(timer);timer=setTimeout(()=>$('#toast').style.display='none',3600);}
-function save(){state.activeListId=activeList;removeCategoryCycles(state.categories);if(saveBlocked){toast('Opslaan geblokkeerd: herstel eerst een geldige back-up.');return false;}try{markCloudChanges();state.activeListId=activeList;localStorage.setItem(KEY,JSON.stringify(state));$('#saveStatus').textContent='Lokaal bewaard in deze browser';updateCloudStatus();return true;}catch{$('#saveStatus').textContent='Opslaan mislukt — maak nu een back-up.';toast('Opslag vol of niet beschikbaar. Maak een back-up.');return false;}}
+function save(){state.activeListId=activeList;removeCategoryCycles(state.categories);if(saveBlocked){toast('Opslaan geblokkeerd: herstel eerst een geldige back-up.');return false;}try{markCloudChanges();state.activeListId=activeList;localStorage.setItem(KEY,JSON.stringify(state));$('#saveStatus').textContent='Lokaal bewaard in deze browser';updateCloudStatus();if(embedded)queueMicrotask(()=>syncCloud());return true;}catch{$('#saveStatus').textContent='Opslaan mislukt — maak nu een back-up.';toast('Opslag vol of niet beschikbaar. Maak een back-up.');return false;}}
 const list=()=>state.lists.find(l=>l.id===activeList),prod=id=>state.products.find(p=>p.id===id),cat=id=>state.categories.find(c=>c.id===id);
 function btn(text,fn,cls='secondary'){const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;}
 function field(label,type,value=''){const l=el('label',label,'field'),input=el('input');input.type=type;input.value=value;l.append(input);$('#modalBody').append(l);return input;}
@@ -460,7 +460,7 @@ function syncCloud(){
 async function runCloudSync(){
  if(cloudBusy||saveBlocked||document.hidden||launchPending)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
-  if(!identity.saved()?.confirmed)return;
+  if(!embedded&&!identity.saved()?.confirmed)return;
   const api=await connectSharon();
   try{await syncAccountCatalog(state,api,identity.saved()?.self?.personId,()=>localStorage.setItem(KEY,JSON.stringify(state)));catalogError='';}catch(error){if(catalogError!==error.message)toast(error.message);catalogError=error.message;}
   const remote=await api.index();
@@ -539,11 +539,11 @@ async function openSharonLists({fromLink=false}={}){
    }));
    const link=el('a','Delen en toegang beheren in Sharon');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
   },()=>true,'Sluiten');
- }catch(e){if(identity.saved()?.confirmed)openModal('Lijst openen',()=>{$('#modalBody').append(el('p',e.message));if(launchPending)$('#modalBody').append(btn('Opnieuw proberen',()=>{closeModal();openSharonLists({fromLink:true});}));},()=>true,'Sluiten');else openPairing(e.message);}
- finally{openingList=false;}
+ }catch(e){if(embedded||identity.saved()?.confirmed)openModal('Lijst openen',()=>{$('#modalBody').append(el('p',e.message));if(launchPending)$('#modalBody').append(btn('Opnieuw proberen',()=>{closeModal();openSharonLists({fromLink:true});}));},()=>true,'Sluiten');else openPairing(e.message);}
+ finally{openingList=false;if(embedded&&!launchPending)queueMicrotask(()=>syncCloud());}
 }
 function pairingLabel(){
- const saved=identity.saved();$('#sharonConnection').hidden=!saved?.confirmed;$('#sharonConnection').textContent='Sharon · verbinding beheren';$('#pairFromClipboard').hidden=!!saved?.confirmed;
+ const saved=identity.saved();if(embedded){$('#sharonConnection').hidden=true;$('#pairFromClipboard').hidden=true;return;}$('#sharonConnection').hidden=!saved?.confirmed;$('#sharonConnection').textContent='Sharon · verbinding beheren';$('#pairFromClipboard').hidden=!!saved?.confirmed;
 }
 function openPairing(message=''){
  openModal('Verbinding met Sharon',()=>{
@@ -578,7 +578,7 @@ const clipboardPairing=new ClipboardPairing(identity,{
 $('#pairFromClipboard').onclick=async()=>{const result=clipboardPairing.connect();$('#manageLogo').classList.add('is-syncing');try{await result;}finally{updateCloudStatus();}};
 $('#manageLogo').onclick=()=>{
  const opening=$('#appMenu').hidden;$('#appMenu').hidden=!opening;$('#manageLogo').setAttribute('aria-expanded',String(opening));pairingLabel();
- if(opening&&identity.saved()?.confirmed)syncCloud();
+ if(opening&&(embedded||identity.saved()?.confirmed))syncCloud();
 };
 
 document.addEventListener('click',event=>{if(!event.target.closest('#appMenu,#manageLogo'))closeMenu();});
