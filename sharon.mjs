@@ -1,5 +1,5 @@
 import {ShopIdentity} from './pairing.mjs';
-import {EmbeddedSession,isEmbedded} from './embedded-session.mjs?v=20261117-session';
+import {EmbeddedSession,isEmbedded} from './embedded-session.mjs?v=20261117-product-library';
 export const embedded=isEmbedded();
 export const identity=embedded?new EmbeddedSession():new ShopIdentity();
 export async function connectSharon(){
@@ -7,11 +7,11 @@ export async function connectSharon(){
  if(embedded)return identity.api();
  const credential=identity.saved().token;
  const request=(action,input={})=>{if(identity.saved()?.token!==credential)throw Error('De koppeling is ondertussen gewijzigd.');return identity.request(action,input,credential);};
- return {catalog:()=>request('shopcatalog-read'),writeCatalog:(payload,revision,operation)=>request('shopcatalog-put',{payload,revision,operation}),leave:id=>request('shoplist-leave',{id}),archive:(id,archived)=>request('shoplist-archive',{id,archived}),index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
+ return {library:(command,payload)=>request('shoplibrary-'+command,payload),catalog:()=>request('shopcatalog-read'),writeCatalog:(payload,revision,operation)=>request('shopcatalog-put',{payload,revision,operation}),leave:id=>request('shoplist-leave',{id}),archive:(id,archived)=>request('shoplist-archive',{id,archived}),index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};
 }
 export function snapshot(state,list){
  const source=[...new Set(list.items.map(i=>i.productId))].map(id=>state.products.find(p=>p.id===id));
- const products=source.map(p=>{const {remoteId,...rest}=p;return {...rest,id:remoteId||p.id,categoryId:state.categories.find(c=>c.id===p.categoryId)?.remoteId||p.categoryId};});
+ const products=source.map(p=>{const {remoteId,hidden,disabledBarcodes,collectionProductKey,...rest}=p;return {...rest,id:remoteId||p.id,categoryId:state.categories.find(c=>c.id===p.categoryId)?.remoteId||p.categoryId};});
  const categoryIds=new Set(source.map(p=>p.categoryId));
  const categories=state.categories.filter(c=>categoryIds.has(c.id)).map(c=>({id:c.remoteId||c.id,name:c.name,entries:[]}));
  const {cloud,archived,...clean}=list;
