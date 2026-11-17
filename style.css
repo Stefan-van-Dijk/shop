@@ -26,3 +26,5 @@ header{position:relative;z-index:6}.appMenu{position:absolute;right:28px;top:cal
 .from-sharon header{flex-wrap:wrap;gap:.5rem}
 .from-sharon #contextTitle{flex:1;overflow-wrap:anywhere}
 .from-sharon .hero.compact{padding:.5rem 0;min-height:0}
+
+.from-sharon .listContext{display:none!important}

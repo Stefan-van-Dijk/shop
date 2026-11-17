@@ -1,7 +1,10 @@
 import {ShopIdentity} from './pairing.mjs';
-export const identity=new ShopIdentity();
+import {EmbeddedSession,isEmbedded} from './embedded-session.mjs?v=20261117-session';
+export const embedded=isEmbedded();
+export const identity=embedded?new EmbeddedSession():new ShopIdentity();
 export async function connectSharon(){
  await identity.check();
+ if(embedded)return identity.api();
  const credential=identity.saved().token;
  const request=(action,input={})=>{if(identity.saved()?.token!==credential)throw Error('De koppeling is ondertussen gewijzigd.');return identity.request(action,input,credential);};
  return {catalog:()=>request('shopcatalog-read'),writeCatalog:(payload,revision,operation)=>request('shopcatalog-put',{payload,revision,operation}),leave:id=>request('shoplist-leave',{id}),archive:(id,archived)=>request('shoplist-archive',{id,archived}),index:()=>request('shoplist-index'),read:id=>request('shoplist-read',{id}),write:(payload,revision=0,operation=crypto.randomUUID(),create=false)=>request(create?'shoplist-create':'shoplist-put',{id:payload.list.id,payload,revision,operation})};

@@ -1,4 +1,4 @@
-import {snapshot,installSnapshot} from './sharon.mjs?v=20261116-account-catalog';
+import {snapshot,installSnapshot} from './sharon.mjs?v=20261117-session';
 import {validate} from './core.mjs?v=20261115-list-lifecycle';
 
 // Opening a link always reads the selected server list, even if it is cached.
