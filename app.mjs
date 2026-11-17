@@ -1,3 +1,4 @@
+import {readLaunchContext} from './launch-context.mjs?v=20261117';
 import {fetchSelectedList} from './selected-list.mjs?v=20261116-selected-list';
 import {syncAccountCatalog} from './catalog-sync.mjs?v=20261116-account-catalog';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
@@ -5,6 +6,10 @@ import {listSyncStatus} from './sync-status.mjs?v=20261115-list-lifecycle';
 import {connectSharon,identity,snapshot,installSnapshot} from './sharon.mjs?v=20261116-account-catalog';
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
+const launch=readLaunchContext(location.href);
+if(launch.compact){document.body.classList.add('from-sharon');const back=el('button','← Sharon','quiet');back.id='returnSharon';back.onclick=()=>{if(window.parent!==window)window.parent.postMessage({type:'shop:return'},launch.hostOrigin);else location.href=launch.returnUrl;};document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);}
+let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
+if(launchPending)document.querySelector('main').inert=true;
 let cloudBusy=false,catalogError='',cloudTask=null,openingList=false;
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY='bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw));}catch{saveBlocked=true;$('#saveStatus').textContent='Opgeslagen gegevens konden niet worden gelezen. Exporteer eerst je oorspronkelijke back-up.';}
@@ -19,7 +24,7 @@ function openModal(title,build,onSubmit,action='Bewaren'){$('#modalTitle').textC
 function closeModal(){stopDeck();stopCamera();$('#modal').close();}
 $('#closeModal').onclick=closeModal;$('#modal').addEventListener('close',()=>{stopCamera();stopDeck();});$('#modal').addEventListener('cancel',()=>{stopCamera();stopDeck();});
 function closeMenu(){$('#appMenu').hidden=true;$('#manageLogo').setAttribute('aria-expanded','false');}
-function switchView(v){closeMenu();view=v;$('#contextNew').hidden=v==='lists';for(const id of ['home','lists','manage'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();}
+function switchView(v){closeMenu();view=v;$('#contextNew').hidden=!launch.compact&&v==='lists';for(const id of ['home','lists','manage'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();}
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 function render(){
  renderContext();
@@ -65,7 +70,7 @@ function renderList(target=$('#listRows'),neededOnly=false){target.replaceChildr
  for(const [name,items]of [...groups].sort(([a],[b])=>a.localeCompare(b,'nl'))){target.append(el('h3',name,'sectionLabel'));items.forEach(i=>{const row=el('div',undefined,'row'+(i.done?' done':'')),check=el('input');row.dataset.listItem=i.id;check.type='checkbox';check.checked=i.done;check.setAttribute('aria-label',prod(i.productId).name+' afvinken');const setDone=value=>{i.done=value;check.checked=value;row.classList.toggle('done',value);if(value&&!i.purchaseRecorded){i.purchaseRecorded=true;const p=prod(i.productId);p.purchaseCount=(p.purchaseCount||0)+1;p.lastPurchased=Date.now();}save();renderContext();$('#progress').textContent=`${l.items.filter(item=>item.done).length} van ${l.items.length} afgevinkt`;$('#shoppingProgress').textContent=l.items.filter(item=>item.done).length+' / '+l.items.length;};check.onchange=()=>setDone(check.checked);const text=btn('',()=>setDone(!i.done),'text');text.setAttribute('aria-label',prod(i.productId).name+' afvinken of terugzetten');text.append(el('strong',prod(i.productId).name));if(i.note)text.append(el('small',i.note));const qty=el('span',i.quantity+' ×','listQuantity');qty.setAttribute('aria-label','Aantal '+prod(i.productId).name);const remove=btn('×',()=>removeListItem(i,row),'quiet');remove.setAttribute('aria-label','Verwijder '+prod(i.productId).name);row.append(check,text,qty,remove);swipeAction(row,()=>setDone(!i.done));target.append(row);});}
 }
 $('#manageSearch').oninput=renderManage;$('#listSelect').onchange=e=>{activeList=e.target.value;save();render();};
-$('#newList').onclick=()=>{let name;openModal('Nieuwe lijst',()=>name=field('Naam','text'),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');const l={id:uid(),name:name.value.trim(),items:[]};state.lists.push(l);activeList=l.id;save();render();});};
+$('#newList').onclick=()=>{let name;openModal('Nieuwe lijst',()=>name=field('Naam','text'),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');const l={id:uid(),name:name.value.trim(),items:[]};state.lists.push(l);activeList=l.id;save();switchView('home');queueMicrotask(()=>syncCloud());});};
 $('#renameList').onclick=()=>{if(!list())return;let name;openModal('Lijst hernoemen',()=>name=field('Naam','text',list().name),()=>{if(!name.value.trim())throw Error('Geef de lijst een naam.');list().name=name.value.trim();save();render();});};
 $('#deleteList').onclick=$('#contextDelete').onclick=()=>{const removed=list();if(!removed)return;let busy=false;openModal('Lijst verwijderen',()=>$('#modalBody').append(el('p','“'+removed.name+'” uit jouw overzicht verwijderen? Andere deelnemers behouden toegang. De laatste deelnemer verwijdert de lijst volledig.')),()=>{if(busy)return false;busy=true;$('#modalSave').disabled=true;(async()=>{try{if(removed.cloud)await (await connectSharon()).leave(removed.id);else{state.deletedLists=state.deletedLists||[];state.deletedLists.push({...removed,deletedAt:Date.now()});}state.lists=state.lists.filter(l=>l.id!==removed.id);activeList=state.lists.find(l=>!l.archived)?.id;save();render();closeModal();}catch(e){toast(e.message);}finally{busy=false;$('#modalSave').disabled=false;}})();return false;},'Verwijderen');};
 $('#restoreList').onclick=()=>{const removed=state.deletedLists?.pop();if(!removed){toast('Geen verwijderde lijst om terug te zetten.');return;}delete removed.deletedAt;state.lists.push(removed);activeList=removed.id;save();render();toast('Lijst teruggezet.');};
@@ -196,6 +201,7 @@ $('#retryCatalog').onclick=loadPublishedCatalog;
 loadPublishedCatalog();
 
 function renderContext(){
+ if(launch.compact)$('#contextTitle').textContent=list()?.name||'Nieuwe lijst';
  updateCloudStatus();
  const select=$('#activeListSelect');select.replaceChildren();for(const l of state.lists.filter(l=>!l.archived)){const o=el('option',l.name);o.value=l.id;select.append(o);}select.value=activeList||'';
  const n=list()?.items.filter(i=>!i.done).length||0;$('#count').textContent=n;$('#contextCount').textContent=n===1?'1 product nodig':n+' producten nodig';
@@ -452,7 +458,7 @@ function syncCloud(){
  cloudTask=runCloudSync().finally(()=>{cloudTask=null;});return cloudTask;
 }
 async function runCloudSync(){
- if(cloudBusy||saveBlocked||document.hidden)return;cloudBusy=true;updateCloudStatus();let syncingList;
+ if(cloudBusy||saveBlocked||document.hidden||launchPending)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
   if(!identity.saved()?.confirmed)return;
   const api=await connectSharon();
@@ -474,7 +480,7 @@ async function runCloudSync(){
    l.cloud={revision:response.list.revision,role:response.role||'owner',base:JSON.stringify(payload),confirmedAt:Date.now()};markCloudChanges();
    localStorage.setItem(KEY,JSON.stringify(state));
   }
-  if(!state.lists.some(l=>l.id===activeList&&!l.archived))activeList=state.lists.find(l=>!l.archived)?.id;
+  if(!state.lists.some(l=>l.id===activeList&&!l.archived))activeList=launch.compact?undefined:state.lists.find(l=>!l.archived)?.id;
   localStorage.setItem(KEY,JSON.stringify(state));render();
   const linked=state.lists.filter(l=>l.cloud&&!l.archived);
   for(const l of linked){
@@ -511,7 +517,7 @@ async function openSharonLists({fromLink=false}={}){
    if(!remote.lists.some(row=>row.id===requested&&!row.archived))throw Error('Deze lijst is niet beschikbaar. Open het Sharon-lijstenmenu om je toegang en archief te bekijken.');
    await fetchSelectedList(state,api,requested);activeList=requested;
    if(!save())throw Error('De lijst kon niet blijvend worden opgeslagen.');
-   closeModal();homeSection='mylist';switchView('lists');
+   launchPending=false;document.querySelector('main').inert=false;closeModal();homeSection='mylist';switchView(launch.view);
    const url=new URL(location.href);url.searchParams.delete('shoplist');history.replaceState(history.state,'',url.pathname+url.search+url.hash);return;
   }
   openModal('ShopList · Sharon',()=>{
@@ -520,10 +526,10 @@ async function openSharonLists({fromLink=false}={}){
    if(current&&!current.cloud)$('#modalBody').append(btn('Deze lijst verbinden',async()=>{
     try{const payload=snapshot(state,current);const response=await api.write(payload,0,crypto.randomUUID(),true);current.cloud={revision:response.list.revision,role:'owner',base:JSON.stringify(payload),confirmedAt:Date.now()};save();closeModal();toast('Lijst verbonden met Sharon');}catch(e){toast(e.message);}
    }));
-   for(const saved of state.lists.filter(l=>l.archived&&!l.cloud))$('#modalBody').append(btn(saved.name+' · lokale archiefkopie terugzetten',()=>{saved.archived=false;activeList=saved.id;save();closeModal();render();}));
-   for(const row of remote.lists.filter(r=>r.archived))$('#modalBody').append(btn(row.name+' · terugzetten uit archief',async()=>{try{await api.archive(row.id,false);closeModal();await syncCloud();}catch(e){toast(e.message);}}));
-   if(current?.cloud)$('#modalBody').append(btn('Deze lijst archiveren',async()=>{try{await api.archive(current.id,true);closeModal();await syncCloud();}catch(e){toast(e.message);}}));
-   for(const row of remote.lists.filter(r=>!r.archived))$('#modalBody').append(btn(row.name+' · openen / online versie ophalen',async()=>{
+   for(const saved of state.lists.filter(l=>!launch.compact&&l.archived&&!l.cloud))$('#modalBody').append(btn(saved.name+' · lokale archiefkopie terugzetten',()=>{saved.archived=false;activeList=saved.id;save();closeModal();render();}));
+   for(const row of remote.lists.filter(r=>!launch.compact&&r.archived))$('#modalBody').append(btn(row.name+' · terugzetten uit archief',async()=>{try{await api.archive(row.id,false);closeModal();await syncCloud();}catch(e){toast(e.message);}}));
+   if(!launch.compact&&current?.cloud)$('#modalBody').append(btn('Deze lijst archiveren',async()=>{try{await api.archive(current.id,true);closeModal();await syncCloud();}catch(e){toast(e.message);}}));
+   for(const row of remote.lists.filter(r=>!r.archived&&(!launch.compact||r.id===activeList)))$('#modalBody').append(btn(row.name+' · openen / online versie ophalen',async()=>{
     try{
      const existing=state.lists.find(l=>l.id===row.id);const response=await api.read(row.id),payload=response.list.payload;
      validate({schemaVersion:1,...payload,recipes:[],lists:[payload.list]});
@@ -533,7 +539,7 @@ async function openSharonLists({fromLink=false}={}){
    }));
    const link=el('a','Delen en toegang beheren in Sharon');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
   },()=>true,'Sluiten');
- }catch(e){if(identity.saved()?.confirmed)openModal('Lijst openen',()=>$('#modalBody').append(el('p',e.message)),()=>true,'Sluiten');else openPairing(e.message);}
+ }catch(e){if(identity.saved()?.confirmed)openModal('Lijst openen',()=>{$('#modalBody').append(el('p',e.message));if(launchPending)$('#modalBody').append(btn('Opnieuw proberen',()=>{closeModal();openSharonLists({fromLink:true});}));},()=>true,'Sluiten');else openPairing(e.message);}
  finally{openingList=false;}
 }
 function pairingLabel(){
