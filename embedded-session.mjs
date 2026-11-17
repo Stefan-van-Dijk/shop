@@ -15,5 +15,5 @@ export class EmbeddedSession {
  async check(){const result=await this.request('session');const account=new URL(this.win.location.href).searchParams.get('account');if(account&&account!==result.self?.personId)throw Error('De Sharon-identiteit is gewijzigd. Open Shop opnieuw.');this.self=result.self;return this.self;}
  saved(){return this.self?{confirmed:true,self:this.self}:null;}
  dispose(){this.win.removeEventListener('message',this.receive);for(const item of this.pending.values()){clearTimeout(item.timer);item.reject(Error('Shop is gesloten.'));}this.pending.clear();}
- api(){return {index:()=>this.request('index'),catalog:()=>this.request('catalog'),writeCatalog:(payload,revision,operation)=>this.request('writeCatalog',{payload,revision,operation}),read:id=>this.request('read',{id}),write:(payload,revision,operation,create=false)=>this.request('write',{id:payload.list.id,payload,revision,operation,create})};}
+ api(){return {library:(command,payload)=>this.request('library',{command,payload}),index:()=>this.request('index'),catalog:()=>this.request('catalog'),writeCatalog:(payload,revision,operation)=>this.request('writeCatalog',{payload,revision,operation}),read:id=>this.request('read',{id}),write:(payload,revision,operation,create=false)=>this.request('write',{id:payload.list.id,payload,revision,operation,create})};}
 }

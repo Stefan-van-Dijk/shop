@@ -149,10 +149,16 @@ export function fuzzyMatch(text,query){
 export function mergeProductVariants(state,productIds,name){
  const variants=state.products.filter(p=>productIds.includes(p.id));
  if(variants.length<2||!name.trim())throw Error('Kies minstens twee producten en een naam.');
+ const centralIds=new Set(variants.map(p=>p.centralId).filter(Boolean));
+ if(centralIds.size>1)throw Error('Deze producten hebben verschillende centrale product-ID’s.');
  const target=variants[0],ids=new Set(variants.map(p=>p.id));
+ const linked=variants.find(p=>p.centralId);
+ if(linked&&!target.centralId)Object.assign(target,{centralId:linked.centralId,centralBarcode:linked.centralBarcode,centralName:linked.centralName});
+ const disabled=[...new Set(variants.flatMap(p=>p.disabledBarcodes||[]))];
  target.aliases=[...new Set(variants.flatMap(p=>[p.name,...(p.aliases||[])]))];
  target.variants=[...(target.variants||[]),...variants.filter(p=>!(target.variants||[]).some(v=>v.id===p.id)).map(p=>structuredClone(p))];
  target.barcodes=[...new Set(variants.flatMap(p=>p.barcodes))];target.packages=variants.flatMap(p=>p.packages||[]).filter((p,i,a)=>a.findIndex(x=>x.barcode===p.barcode)===i);
+ if(disabled.length)target.disabledBarcodes=disabled.filter(code=>!target.barcodes.includes(code));
  target.favorite=variants.some(p=>p.favorite);target.purchaseCount=variants.reduce((n,p)=>n+(p.purchaseCount||0),0);target.name=name.trim();
  for(const l of [...state.lists,...(state.deletedLists||[])])for(const i of l.items)if(ids.has(i.productId))i.productId=target.id;
  for(const r of state.recipes)for(const i of r.ingredients)if(ids.has(i.productId))i.productId=target.id;
