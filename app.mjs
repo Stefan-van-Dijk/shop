@@ -8,7 +8,12 @@ import {connectSharon,identity,embedded,snapshot,installSnapshot} from './sharon
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 const launch=readLaunchContext(location.href);
-if(launch.compact){document.body.classList.add('from-sharon');const back=el('button',undefined,'quiet sharonReturn');back.id='returnSharon';back.type='button';back.setAttribute('aria-label','Terug naar Sharon');back.title='Terug naar Sharon';const arrow=el('span','←');arrow.setAttribute('aria-hidden','true');const mark=el('img');mark.src='assets/sharon-logo.svg';mark.alt='';mark.width=26;mark.height=26;back.append(arrow,mark);back.onclick=()=>returnToSharon();document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
+if(launch.compact){document.body.classList.add('from-sharon');const back=el('button',undefined,'quiet sharonReturn');back.id='returnSharon';back.type='button';back.setAttribute('aria-label','Terug naar Sharon');back.title='Terug naar Sharon';const mark=el('img');mark.src='assets/sharon-logo.svg';mark.alt='';mark.width=26;mark.height=26;back.append(mark);back.onclick=()=>returnToSharon();document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
+if(launch.compact){
+ const brand=document.querySelector('header .brand'),wrap=el('div',undefined,'shopMenuAnchor'),trigger=el('button','ShopList','brand');
+ trigger.id='shopMenuBrand';trigger.type='button';trigger.setAttribute('aria-label','ShopList-menu openen');trigger.setAttribute('aria-expanded','false');trigger.setAttribute('aria-controls','appMenu');
+ brand.replaceWith(wrap);wrap.append(trigger,$('#appMenu'));
+}
 if(embedded)document.body.classList.add('is-embedded');
 let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
 if(launchPending)document.querySelector('main').inert=true;
@@ -26,7 +31,7 @@ function categoryField(value){const l=el('label','Categorie','field'),s=el('sele
 function openModal(title,build,onSubmit,action='Bewaren'){$('#modalTitle').textContent=title;$('#modalBody').replaceChildren();$('#modalSave').textContent=action;build();$('#modalForm').onsubmit=e=>{e.preventDefault();try{if(onSubmit()!==false)closeModal();}catch(err){toast(err.message);}};$('#modal').showModal();}
 function closeModal(){stopDeck();stopCamera();$('#modal').close();}
 $('#closeModal').onclick=closeModal;$('#modal').addEventListener('close',()=>{stopCamera();stopDeck();});$('#modal').addEventListener('cancel',()=>{stopCamera();stopDeck();});
-function closeMenu(){$('#appMenu').hidden=true;$('#manageLogo').setAttribute('aria-expanded','false');}
+function closeMenu(){$('#appMenu').hidden=true;$('#manageLogo').setAttribute('aria-expanded','false');$('#shopMenuBrand')?.setAttribute('aria-expanded','false');}
 function switchView(v){closeMenu();view=v;$('#contextNew').hidden=!launch.compact&&v==='lists';for(const id of ['home','lists','manage'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();if(!launchPending)publishHostView(v);}
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 function render(){
@@ -598,11 +603,12 @@ const clipboardPairing=new ClipboardPairing(identity,{
  success:self=>{pairingLabel();toast('Verbonden met Sharon · '+self.name);if(new URLSearchParams(location.search).has('shoplist'))openSharonLists({fromLink:true});else syncCloud();}
 });
 $('#pairFromClipboard').onclick=async()=>{const result=clipboardPairing.connect();$('#manageLogo').classList.add('is-syncing');try{await result;}finally{updateCloudStatus();}};
-$('#manageLogo').onclick=()=>{
- const opening=$('#appMenu').hidden;$('#appMenu').hidden=!opening;$('#manageLogo').setAttribute('aria-expanded',String(opening));pairingLabel();
+const menuTrigger=$('#shopMenuBrand')||$('#manageLogo');
+menuTrigger.onclick=()=>{
+ const opening=$('#appMenu').hidden;$('#appMenu').hidden=!opening;menuTrigger.setAttribute('aria-expanded',String(opening));pairingLabel();
  if(opening&&(embedded||identity.saved()?.confirmed))syncCloud();
 };
 
-document.addEventListener('click',event=>{if(!event.target.closest('#appMenu,#manageLogo'))closeMenu();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appMenu').hidden){closeMenu();$('#manageLogo').focus();}});
+document.addEventListener('click',event=>{if(!event.target.closest('#appMenu,#manageLogo,#shopMenuBrand'))closeMenu();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appMenu').hidden){closeMenu();menuTrigger.focus();}});
 $('#appMenu').addEventListener('click',event=>{if(event.target.closest('#sharonLists,#sharonConnection'))closeMenu();});
