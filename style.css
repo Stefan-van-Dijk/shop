@@ -42,7 +42,7 @@ header{position:relative;z-index:6}.appMenu{position:absolute;right:28px;top:cal
 /* Inline vector logo: hard vector clips, no raster masks or blur. */
 .shop-loading-logo{display:block;width:32px;height:32px;overflow:visible}
 .from-sharon .sharonReturn .shop-loading-logo{width:26px;height:26px}
-.is-loading .logo-outer-arcs{transform-origin:0 0;animation:shop-logo-orbit 1.6s linear infinite}
+.is-loading .logo-outer-arcs{transform-box:fill-box;transform-origin:center;animation:shop-logo-orbit 1.6s linear infinite}
 .is-loading .logo-inner-ring{animation:shop-logo-breathe 1.2s ease-in-out infinite alternate}
 @keyframes shop-logo-orbit{to{transform:rotate(360deg)}}
 @keyframes shop-logo-breathe{from{opacity:1}to{opacity:.45}}
@@ -51,3 +51,6 @@ header{position:relative;z-index:6}.appMenu{position:absolute;right:28px;top:cal
  .is-loading .logo-outer-arcs,.is-loading .logo-inner-ring{animation:none}
  .is-loading .shop-loading-logo{outline:2px dotted #687742;outline-offset:4px;border-radius:50%}
 }
+
+.sharonLogo,.from-sharon .sharonReturn{overflow:visible}
+.shop-loading-logo{flex-shrink:0;max-width:none}

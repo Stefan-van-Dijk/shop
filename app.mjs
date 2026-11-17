@@ -1,4 +1,4 @@
-import {sharonLogoMarkup} from './brand.mjs?v=20261117-svg-loading';
+import {sharonLogoMarkup} from './brand.mjs?v=20261117-svg-bounds';
 import {createLibraryId,openSourceBarcodes,barcodePreferences,categoryProductIds,reachesCategory,displayCentralProduct} from './product-library.mjs?v=20261117-products';
 import {createSyncQueue,flushBeforeReturn} from './sync-queue.mjs?v=20261117-sync-return';
 import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261117-preview';
