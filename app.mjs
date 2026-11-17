@@ -401,6 +401,10 @@ function editCentralProduct(central) {
   name=field('Productnaam','text',central.name);
   brand=field('Merk','text',central.brand);
   quantity=field('Verpakkingsinhoud','text',central.quantity);
+  $('#modalBody').append(el('p','Maak een veld leeg om eigen informatie te verwijderen. Het product behoudt ID '+central.id+'.','hint'));
+  for(const [label,input] of [['Naam verwijderen',name],['Merk verwijderen',brand],['Verpakkingsinhoud verwijderen',quantity]]){
+   input.parentElement.append(btn(label,()=>{input.value='';input.focus();}));
+  }
  },()=>{
   if(name.disabled)return false;
   const data={id:central.id,revision:central.revision,name:name.value.trim(),brand:brand.value.trim(),quantity:quantity.value.trim()};
@@ -436,7 +440,7 @@ async function refreshLibrary(api) {
     const {product}=await api.library('product',{name:pack.name,brand:pack.brand,quantity:pack.quantity,barcode:pack.barcode,source:'openfoodfacts'});
     const current=rawProduct(id);
     if(current&&!current.centralId&&current.barcodes.includes(pack.barcode)){
-     Object.assign(current,{centralId:product.id,centralBarcode:product.barcode,centralName:product.name});
+     Object.assign(current,{centralId:product.id,centralBarcode:product.barcode,centralName:product.name||product.id});
      centralProducts.set(product.id,product);
      queueMicrotask(()=>syncCloud());
     }
@@ -501,11 +505,11 @@ function openSharedCollection(collection) {
    }));
   }
   for(const product of collection.products){
-   const row=el('div',undefined,'row'),label=el('span',product.name,'text');
+   const row=el('div',undefined,'row'),label=el('span',product.name||product.id,'text');
    row.append(label,btn('Op mijn lijst',()=>addCollectionProduct(collection,product)));
    if(collection.role!=='read'){
     const remove=btn('Weghalen',()=>changeCollectionItem(collection,product.key,false),'quiet');
-    remove.setAttribute('aria-label',product.name+' uit verzameling halen');row.append(remove);
+    remove.setAttribute('aria-label',(product.name||product.id)+' uit verzameling halen');row.append(remove);
    }
    $('#modalBody').append(row);
   }
@@ -517,9 +521,9 @@ function addCollectionProduct(collection, product) {
  if(!own){
   const target=state.categories.find(c=>c.collectionIds?.includes(collection.id))||state.categories.find(c=>!c.remoteId&&c.name!=='Home');
   if(!target){toast('Maak eerst een eigen categorie.');return;}
-  own={id:uid(),name:product.name,categoryId:target.id,input:'plain',barcodes:[]};
+  own={id:uid(),name:product.name||product.id,categoryId:target.id,input:'plain',barcodes:[]};
   if(product.central){
-   Object.assign(own,{centralId:product.id,centralBarcode:product.barcode,centralName:product.name});
+   Object.assign(own,{centralId:product.id,centralBarcode:product.barcode,centralName:product.name||product.id});
    centralProducts.set(product.id,product);
    if(product.barcode)own.barcodes.push(product.barcode);
    if(product.source&&product.barcode)own.packages=[{barcode:product.barcode,source:product.source}];
@@ -527,7 +531,7 @@ function addCollectionProduct(collection, product) {
   state.products.push(own);
   target.entries.push({type:'product',id:own.id});
  }
- quickAdd(own);toast(product.name+' toegevoegd');
+ quickAdd(own);toast((product.name||product.id)+' toegevoegd');
 }
 
 function placeCollection(collection){

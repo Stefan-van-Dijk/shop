@@ -41,3 +41,12 @@ test('Nested categories show products once and a second device preserves persona
  assert.deepEqual(deviceB.categories[1].collectionIds,['collection12']);
  assert.deepEqual(deviceB.lists[0].items,[row]);
 });
+
+test('Clearing a central name displays its stable ID without restoring removed information',()=>{
+ const id=createLibraryId();
+ const product={id:'local',centralId:id,centralName:'Melk',name:'Melk',barcodes:[]};
+ const result=displayCentralProduct(product,new Map([[id,{id,name:'',brand:'',quantity:'',barcode:null}]]));
+ assert.equal(result.name,id);
+ assert.equal(result.centralId,id);
+ assert.equal(result.id,'local');
+});

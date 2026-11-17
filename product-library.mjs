@@ -51,7 +51,7 @@ export function displayCentralProduct(product, library) {
  const enabled = central.barcode && product.barcodes.includes(product.centralBarcode) && !product.disabledBarcodes?.includes(central.barcode);
  return {
   ...product,
-  name: product.centralName === product.name ? central.name : product.name,
+  name: product.centralName === product.name ? (central.name || central.id) : product.name,
   barcodes: [...new Set([...manual, ...(enabled ? [central.barcode] : [])])]
  };
 }
