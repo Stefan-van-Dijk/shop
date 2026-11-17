@@ -1,3 +1,4 @@
+import {createSyncQueue,flushBeforeReturn} from './sync-queue.mjs?v=20261117-sync-return';
 import {readLaunchContext} from './launch-context.mjs?v=20261117';
 import {fetchSelectedList} from './selected-list.mjs?v=20261117-session';
 import {syncAccountCatalog} from './catalog-sync.mjs?v=20261116-account-catalog';
@@ -7,15 +8,16 @@ import {connectSharon,identity,embedded,snapshot,installSnapshot} from './sharon
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261115-list-lifecycle';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 const launch=readLaunchContext(location.href);
-if(launch.compact){document.body.classList.add('from-sharon');const back=el('button','← Sharon','quiet');back.id='returnSharon';back.onclick=()=>{if(window.parent!==window)window.parent.postMessage({type:'shop:return'},launch.hostOrigin);else location.href=launch.returnUrl;};document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
+if(launch.compact){document.body.classList.add('from-sharon');const back=el('button','← Sharon','quiet');back.id='returnSharon';back.onclick=()=>returnToSharon();document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
 let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
 if(launchPending)document.querySelector('main').inert=true;
-let cloudBusy=false,catalogError='',cloudTask=null,openingList=false;
+let cloudBusy=false,catalogError='',openingList=false,returningToSharon=false;
+const cloudQueue=createSyncQueue(runCloudSync);
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY=embedded?'shop.embedded.v1:'+(new URLSearchParams(location.search).get('account')||'unknown')+':'+(new URLSearchParams(location.search).get('shoplist')||'new'):'bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:embedded?[]:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw));}catch{saveBlocked=true;$('#saveStatus').textContent='Opgeslagen gegevens konden niet worden gelezen. Exporteer eerst je oorspronkelijke back-up.';}
 removeCategoryCycles(state.categories);const expanded=new Set();activeList=state.lists.find(l=>l.id===state.activeListId)?.id||state.lists[0]?.id;let timer;
 function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';clearTimeout(timer);timer=setTimeout(()=>$('#toast').style.display='none',3600);}
-function save(){state.activeListId=activeList;removeCategoryCycles(state.categories);if(saveBlocked){toast('Opslaan geblokkeerd: herstel eerst een geldige back-up.');return false;}try{markCloudChanges();state.activeListId=activeList;localStorage.setItem(KEY,JSON.stringify(state));$('#saveStatus').textContent='Lokaal bewaard in deze browser';updateCloudStatus();if(embedded)queueMicrotask(()=>syncCloud());return true;}catch{$('#saveStatus').textContent='Opslaan mislukt — maak nu een back-up.';toast('Opslag vol of niet beschikbaar. Maak een back-up.');return false;}}
+function save(){state.activeListId=activeList;removeCategoryCycles(state.categories);if(saveBlocked){toast('Opslaan geblokkeerd: herstel eerst een geldige back-up.');return false;}try{markCloudChanges();state.activeListId=activeList;localStorage.setItem(KEY,JSON.stringify(state));$('#saveStatus').textContent='Lokaal bewaard in deze browser';updateCloudStatus();queueMicrotask(()=>syncCloud());return true;}catch{$('#saveStatus').textContent='Opslaan mislukt — maak nu een back-up.';toast('Opslag vol of niet beschikbaar. Maak een back-up.');return false;}}
 const list=()=>state.lists.find(l=>l.id===activeList),prod=id=>state.products.find(p=>p.id===id),cat=id=>state.categories.find(c=>c.id===id);
 function btn(text,fn,cls='secondary'){const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;}
 function field(label,type,value=''){const l=el('label',label,'field'),input=el('input');input.type=type;input.value=value;l.append(input);$('#modalBody').append(l);return input;}
@@ -454,9 +456,28 @@ function markCloudChanges(){
  for(const l of state.lists){if(!l.cloud)continue;const payload=snapshot(state,l),json=JSON.stringify(payload);if(l.cloud.role==='read'){if(json!==l.cloud.base){const oldId=l.id;l.id=uid();l.name+=' (eigen kopie)';delete l.cloud;if(activeList===oldId)activeList=l.id;toast('Alleen leesrechten: je wijziging is als eigen kopie bewaard.');}continue;}if(json!==l.cloud.base&&json!==l.cloud.pending?.json)l.cloud.pending={json,operation:crypto.randomUUID()};}
 }
 function syncCloud(){
- if(openingList||cloudTask)return cloudTask;
- cloudTask=runCloudSync().finally(()=>{cloudTask=null;});return cloudTask;
+ if(openingList)return cloudQueue.current;
+ return cloudQueue.request();
 }
+const hasPendingCloudChanges=()=>state.lists.some(l=>!l.archived&&(!l.cloud||l.cloud.pending||l.cloud.conflict))||!!state.catalogSync?.pending;
+async function returnToSharon(){
+ if(returningToSharon)return;
+ if(!embedded){location.href=launch.returnUrl;return;}
+ returningToSharon=true;const back=$('#returnSharon');if(back)back.disabled=true;
+ try{
+  if(openingList||launchPending){
+   if(hasPendingCloudChanges())throw Error('Je lokale wijzigingen wachten nog op synchronisatie. Probeer teruggaan na het openen opnieuw.');
+   window.parent.postMessage({type:'shop:return'},launch.hostOrigin);return;
+  }
+  if(saveBlocked)throw Error('Je lokale gegevens konden niet worden opgeslagen. Herstel eerst je opslag.');
+  await flushBeforeReturn({sync:syncCloud,hasPending:hasPendingCloudChanges,leave:()=>window.parent.postMessage({type:'shop:return'},launch.hostOrigin)});
+ }catch(error){$('#saveStatus').textContent=error.message;toast(error.message);}
+ finally{returningToSharon=false;if(back)back.disabled=false;}
+}
+window.addEventListener('message',event=>{
+ if(embedded&&event.source===window.parent&&event.origin===launch.hostOrigin&&event.data?.type==='shop:prepare-return')returnToSharon();
+});
+if(embedded)window.parent.postMessage({type:'shop:return-ready'},launch.hostOrigin);
 async function runCloudSync(){
  if(cloudBusy||saveBlocked||document.hidden||launchPending)return;cloudBusy=true;updateCloudStatus();let syncingList;
  try{
@@ -509,7 +530,7 @@ async function runCloudSync(){
 async function openSharonLists({fromLink=false}={}){
  if(openingList)return;openingList=true;
  try{
-  await cloudTask;
+  await cloudQueue.current;
   if(saveBlocked)throw Error('Herstel eerst je bestaande opslag voordat je een online lijst opent.');
   const api=await connectSharon(),remote=await api.index();
   const requested=fromLink?new URLSearchParams(location.search).get('shoplist'):null;
