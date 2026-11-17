@@ -28,3 +28,9 @@ header{position:relative;z-index:6}.appMenu{position:absolute;right:28px;top:cal
 .from-sharon .hero.compact{padding:.5rem 0;min-height:0}
 
 .from-sharon .listContext{display:none!important}
+
+/* One return control belongs to Sharon; the wordmark remains Shop's identity. */
+.from-sharon .sharonReturn{display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:56px;min-height:44px;padding:6px 8px;flex:none;color:var(--ink)}
+.from-sharon .sharonReturn span{font-size:22px;line-height:1}
+.from-sharon .sharonReturn img{display:block;width:26px;height:26px;object-fit:contain}
+.from-sharon.is-embedded #manageLogo,.from-sharon.is-embedded #appMenu{display:none!important}
