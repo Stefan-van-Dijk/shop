@@ -1,7 +1,8 @@
-import {sharonLogoMarkup} from './brand.mjs?v=20261117-svg-bounds';
-import {createLibraryId,openSourceBarcodes,barcodePreferences,categoryProductIds,reachesCategory,displayCentralProduct} from './product-library.mjs?v=20261117-products';
+import {categoryTree,branchProducts} from './catalog-tree.mjs?v=20261117-catalog';
+import {sharonLogoMarkup} from './brand.mjs?v=20261117-catalog';
+import {openSourceBarcodes,barcodePreferences,categoryProductIds,reachesCategory,displayCentralProduct} from './product-library.mjs?v=20261117-products';
 import {createSyncQueue,flushBeforeReturn} from './sync-queue.mjs?v=20261117-sync-return';
-import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261117-preview';
+import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261117-catalog';
 import {fetchSelectedList} from './selected-list.mjs?v=20261117-session';
 import {syncAccountCatalog,catalogSnapshot} from './catalog-sync.mjs?v=20261116-account-catalog';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
@@ -19,6 +20,7 @@ if(launch.compact){
 if(embedded)document.body.classList.add('is-embedded');
 let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
 if(launchPending)document.querySelector('main').inert=true;
+let catalogSelection='',catalogQuery='';
 let cloudBusy=false,catalogError='',openingList=false,returningToSharon=false,catalogLoading=false,pairingLoading=false;
 const cloudQueue=createSyncQueue(runCloudSync);
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY=embedded?'shop.embedded.v1:'+(new URLSearchParams(location.search).get('account')||'unknown')+':'+(new URLSearchParams(location.search).get('shoplist')||'new'):'bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:embedded?[]:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -41,13 +43,13 @@ function openModal(title,build,onSubmit,action='Bewaren'){$('#modalTitle').textC
 function closeModal(){stopDeck();stopCamera();$('#modal').close();}
 $('#closeModal').onclick=closeModal;$('#modal').addEventListener('close',()=>{stopCamera();stopDeck();});$('#modal').addEventListener('cancel',()=>{stopCamera();stopDeck();});
 function closeMenu(){$('#appMenu').hidden=true;$('#manageLogo').setAttribute('aria-expanded','false');$('#shopMenuBrand')?.setAttribute('aria-expanded','false');}
-function switchView(v){closeMenu();view=v;$('#contextNew').hidden=!launch.compact&&v==='lists';for(const id of ['home','lists','manage'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();if(!launchPending)publishHostView(v);}
+function switchView(v){closeMenu();view=v;$('#contextNew').hidden=!launch.compact&&v==='lists';for(const id of ['home','lists','manage','catalog'])$('#'+id).hidden=id!==v;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===v));render();if(!launchPending)publishHostView(v);}
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 function render(){
  renderContext();
  $('#welcome').hidden=state.products.length>0||view!=='shop';$('#count').textContent=list()?.items.filter(i=>!i.done).length||0;
  const sel=$('#listSelect');sel.replaceChildren();state.lists.filter(l=>!l.archived).forEach(l=>{const o=el('option',l.name);o.value=l.id;sel.append(o);});sel.value=activeList||'';
- if(view==='home')renderHome();if(view==='lists')renderList($('#listRows'),$('#onlyNeeded').checked);if(view==='manage')renderManage();
+ if(view==='home')renderHome();if(view==='lists')renderList($('#listRows'),$('#onlyNeeded').checked);if(view==='manage')renderManage();if(view==='catalog')renderCatalog();
 }
 function ensureList(){if(!list()){const l={id:uid(),name:'Boodschappen',items:[]};state.lists.push(l);activeList=l.id;}}
 function refreshQuantities(){
@@ -459,42 +461,19 @@ function openCollections() {
  libraryAction(async api=>{
   sharedCollections=(await api.library('index')).collections;
   const owned=sharedCollections.filter(row=>row.role==='owner'),received=sharedCollections.filter(row=>row.role!=='owner');
-  openModal('Gedeelde categorieën',()=>{
-   $('#modalBody').append(btn('Categorieën delen',()=>{closeModal();createCollection();}));
+  openModal('Gedeelde catalogi',()=>{
+   $('#modalBody').append(btn('Delen via Sharon',()=>shareCatalog()));
    for(const row of [...owned,...received])$('#modalBody').append(btn(row.name,()=>{closeModal();openSharedCollection(row);}));
   },()=>{},'Sluiten');
  });
 }
 
-function createCollection() {
- let name,choices;
- const id=createLibraryId();
- openModal('Categorieën delen',()=>{
-  name=field('Naam van de verzameling','text');
-  choices=categoryChecks('Categorieën en hun subcategorieën');
- },()=>{
-  const categories=checkedCategories(choices),title=name.value.trim();
-  if(!title||!categories.length)throw Error('Vul een naam in en kies minstens één categorie.');
-  if(name.disabled)return false;
-  name.disabled=true;
-  libraryAction(async api=>{
-   try{
-    await syncCloud();
-    await api.library('create',{id,name:title,categories});
-    closeModal();
-    sharedCollections=(await api.library('index')).collections;
-    openSharedCollection(sharedCollections.find(row=>row.id===id));
-   }finally{name.disabled=false;}
-  });
-  return false;
- },'Verzameling maken');
-}
-
 function openSharedCollection(collection) {
  if(!collection)return;
  openModal(collection.name,()=>{
+  if(collection.categories?.length){const structure=el('details'),summary=el('summary','Categorieën in deze catalogus');structure.append(summary);for(const category of collection.categories.filter(c=>c.name!=='Home'))structure.append(el('p',category.name));$('#modalBody').append(structure);}
   $('#modalBody').append(btn('Plaats in mijn categorieën',()=>{closeModal();placeCollection(collection);}));
-  if(collection.role==='owner')$('#modalBody').append(btn('Toegang beheren',()=>{closeModal();manageCollectionAccess(collection);}));
+  if(collection.role==='owner')$('#modalBody').append(btn('Toegang beheren in Sharon',()=>shareCatalog(null,collection.id)));
   if(collection.role!=='read'){
    const pick=el('select');pick.setAttribute('aria-label','Centraal product toevoegen');
    const placeholder=el('option','Kies een gekoppeld product');placeholder.value='';pick.append(placeholder);
@@ -558,37 +537,6 @@ function changeCollectionItem(collection,key,include){
  });
 }
 
-function manageCollectionAccess(collection){
- libraryAction(async api=>{
-  const {contacts}=await api.library('contacts');
-  const available=new Map(contacts.map(contact=>[contact.id,contact.name]));
-  for(const id of Object.keys(collection.members||{}))if(!available.has(id))available.set(id,id);
-  openModal('Toegang · '+collection.name,()=>{
-   if(!available.size)$('#modalBody').append(el('p','Voeg eerst een contact toe in Sharon.'));
-   for(const [id,name] of available){
-    const row=el('label',name,'field'),select=el('select');
-    for(const [value,label] of [['','Geen toegang'],['read','Bekijken'],['write','Bewerken']]){
-     const option=el('option',label);option.value=value;select.append(option);
-    }
-    select.value=collection.members?.[id]||'';
-    const status=el('span');status.setAttribute('role','status');
-    select.onchange=()=>{
-     const previous=collection.members?.[id]||'';
-     const role=select.value;select.disabled=true;
-     libraryAction(async api=>{
-      try{
-       await api.library('share',{id:collection.id,personId:id,role:role||null});
-       collection.members[id]=role;status.textContent='Bewaard';
-      }catch(error){select.value=previous;throw error;}
-      finally{select.disabled=false;}
-     });
-    };
-    row.append(select,status);$('#modalBody').append(row);
-   }
-  },()=>{},'Sluiten');
- });
-}
-
 function productControl(p){
  const row=el('div',undefined,'productLine');row.dataset.productId=p.id;
  const minus=btn('−',()=>{decreaseProduct(list(),p.id);save();refreshQuantities();},'step minus');minus.setAttribute('aria-label',p.name+' verminderen');
@@ -604,7 +552,7 @@ function renderHome(){
  const heading=el('div',undefined,'sectionHeading');heading.append(el('h2',titles[homeSection]));target.append(heading);
  if(homeSection==='mylist'){renderHomeList(target);return;}
  if(homeSection==='products'){
-  heading.append(btn('+ Product',()=>editProduct(),'quiet'),btn('Categorieën',openCategorySettings,'quiet'));
+  heading.append(btn('+ Product',()=>editProduct(),'quiet'),btn('Catalogus',()=>switchView('catalog'),'quiet'));
   if(embedded||identity.saved()?.confirmed)heading.append(btn('Gedeelde categorieën',openCollections,'quiet'));
   const order=['frequent','alphabetical','category'].includes(state.productOrder)?state.productOrder:'frequent';
   const sort=el('div',undefined,'productSort');sort.setAttribute('role','group');sort.setAttribute('aria-label','Producten sorteren');
@@ -996,3 +944,37 @@ menuTrigger.onclick=()=>{
 document.addEventListener('click',event=>{if(!event.target.closest('#appMenu,#manageLogo,#shopMenuBrand'))closeMenu();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appMenu').hidden){closeMenu();menuTrigger.focus();}});
 $('#appMenu').addEventListener('click',event=>{if(event.target.closest('#sharonLists,#sharonConnection'))closeMenu();});
+
+if(new URLSearchParams(location.search).get('view')==='catalog')switchView('catalog');
+
+function shareCatalog(categoryId=null,collectionId=null){
+ libraryAction(async()=>{
+  await syncCloud();
+  if(state.catalogSync?.pending||JSON.stringify(catalogSnapshot(state))!==JSON.stringify(state.catalogSync?.base||{}))throw Error('De catalogus is nog niet opgeslagen in Sharon. Synchroniseer eerst en probeer opnieuw.');
+  if(embedded){
+   window.parent.postMessage({type:'shop:catalog-share',categoryId,collectionId},launch.hostOrigin);
+  }else{
+   const target=new URL(launch.returnUrl);target.searchParams.set('catalog','share');
+   if(categoryId)target.searchParams.set('category',categoryId);
+   if(collectionId)target.searchParams.set('collection',collectionId);
+   location.href=target.href;
+  }
+ });
+}
+function renderCatalog(){
+ const target=$('#catalogContent');target.replaceChildren();
+ const tools=el('div',undefined,'toolbar');
+ tools.append(btn('+ Product',()=>editProduct()),btn('+ Categorie',()=>$('#newCategory').click(),'secondary'),btn('Delen via Sharon',()=>shareCatalog(catalogSelection||null),'secondary'));
+ target.append(tools);
+ const layout=el('div',undefined,'catalogLayout'),tree=el('aside',undefined,'catalogTree');tree.setAttribute('aria-label','Categorieboom');
+ const select=(id)=>{catalogSelection=id;renderCatalog();};
+ const all=btn('Alle producten',()=>select(''),'quiet');all.setAttribute('aria-pressed',String(!catalogSelection));tree.append(all);
+ function draw(nodes,parent){for(const {category,children}of nodes){const item=el('div',undefined,'catalogBranch');const choice=btn(category.name,()=>select(category.id),'quiet');choice.setAttribute('aria-pressed',String(catalogSelection===category.id));if(children.length){const details=el('details'),summary=el('summary',category.name);details.open=true;details.append(summary,choice);draw(children,details);item.append(details);}else item.append(choice);parent.append(item);}}
+ draw(categoryTree(state.categories),tree);
+ const content=el('div',undefined,'catalogProducts');content.append(el('h2',cat(catalogSelection)?.name||'Alle producten'));
+ if(catalogSelection){content.append(btn('Categorie indelen',()=>editCategoryParents(cat(catalogSelection)),'quiet'));}
+ const search=el('input');search.type='search';search.placeholder='Zoek in de catalogus…';search.setAttribute('aria-label','Zoek in de catalogus');search.value=catalogQuery;
+ const rows=el('div');const paint=()=>{rows.replaceChildren();const source=catalogSelection?branchProducts(state,catalogSelection):state.products.filter(p=>!p.remoteId);const filtered=source.filter(p=>matchesProduct(p,norm(catalogQuery))).sort((a,b)=>a.name.localeCompare(b.name,'nl'));rows.append(el('p',filtered.length+' producten','muted'));for(const p of filtered){const row=el('div',undefined,'row');row.append(el('span',p.name,'text'),btn('Bewerken',()=>editProduct(p),'quiet'));rows.append(row);}};
+ search.oninput=()=>{catalogQuery=search.value;paint();};content.append(search,rows);paint();layout.append(tree,content);target.append(layout);
+ if(embedded||identity.saved()?.confirmed)target.append(btn('Gedeelde catalogi',openCollections,'secondary'));
+}
