@@ -1,3 +1,4 @@
+import {sharonLogoMarkup} from './brand.mjs?v=20261117-svg-loading';
 import {createLibraryId,openSourceBarcodes,barcodePreferences,categoryProductIds,reachesCategory,displayCentralProduct} from './product-library.mjs?v=20261117-products';
 import {createSyncQueue,flushBeforeReturn} from './sync-queue.mjs?v=20261117-sync-return';
 import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261117-preview';
@@ -9,7 +10,7 @@ import {connectSharon,identity,embedded,snapshot,installSnapshot} from './sharon
 import {norm,uid,importOverview,addItem,validate,mergeCatalog,productQuantity,decreaseProduct,removeCategoryCycles,createBeepGate,barcodeFormat,findBeepProfile,saveBeepProfile,markScannedLine,addPickedExtra,importShoppingList,importListFile,fuzzyMatch,mergeProductVariants,similarProductPairs} from './core.mjs?v=20261117-products';
 const $=s=>document.querySelector(s), el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 const launch=readLaunchContext(location.href);
-if(launch.compact){document.body.classList.add('from-sharon');const back=el('button',undefined,'quiet sharonReturn');back.id='returnSharon';back.type='button';back.setAttribute('aria-label','Terug naar Sharon');back.title='Terug naar Sharon';const mark=el('img');mark.src='assets/sharon-logo.svg?v=20261117-logo2';mark.alt='';mark.width=26;mark.height=26;back.append(mark);back.onclick=()=>returnToSharon();document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
+if(launch.compact){document.body.classList.add('from-sharon');const back=el('button',undefined,'quiet sharonReturn');back.id='returnSharon';back.type='button';back.setAttribute('aria-label','Terug naar Sharon');back.title='Terug naar Sharon';back.innerHTML=sharonLogoMarkup();back.onclick=()=>returnToSharon();document.querySelector('header').prepend(back);const title=el('strong');title.id='contextTitle';$('#activeListSelect').after(title);const create=el('button','Nieuwe lijst','secondary');create.onclick=()=>{closeMenu();$('#newList').click();};$('#appMenu').prepend(create);}
 if(launch.compact){
  const brand=document.querySelector('header .brand'),wrap=el('div',undefined,'shopMenuAnchor'),trigger=el('button','ShopList','brand');
  trigger.id='shopMenuBrand';trigger.type='button';trigger.setAttribute('aria-label','ShopList-menu openen');trigger.setAttribute('aria-expanded','false');trigger.setAttribute('aria-controls','appMenu');
@@ -18,7 +19,7 @@ if(launch.compact){
 if(embedded)document.body.classList.add('is-embedded');
 let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
 if(launchPending)document.querySelector('main').inert=true;
-let cloudBusy=false,catalogError='',openingList=false,returningToSharon=false;
+let cloudBusy=false,catalogError='',openingList=false,returningToSharon=false,catalogLoading=false,pairingLoading=false;
 const cloudQueue=createSyncQueue(runCloudSync);
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY=embedded?'shop.embedded.v1:'+(new URLSearchParams(location.search).get('account')||'unknown')+':'+(new URLSearchParams(location.search).get('shoplist')||'new'):'bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:embedded?[]:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
 try{const raw=localStorage.getItem(KEY);if(raw)state=validate(JSON.parse(raw));}catch{saveBlocked=true;$('#saveStatus').textContent='Opgeslagen gegevens konden niet worden gelezen. Exporteer eerst je oorspronkelijke back-up.';}
@@ -286,13 +287,13 @@ render();
 
 async function loadPublishedCatalog(){
  if(saveBlocked)return;
- const status=$('#catalogStatus');status.textContent='Catalogus laden…';
+ const status=$('#catalogStatus');status.textContent='Catalogus laden…';catalogLoading=true;updateCloudStatus();
  try{
   const response=await fetch('./data/catalog.json',{cache:'no-cache'});
   if(!response.ok)throw Error('Catalogus niet bereikbaar');
   const catalog=await response.json();state=mergeCatalog(state,catalog);save();render();
   status.textContent='Jouw lijsten worden automatisch op dit apparaat bewaard. Maak zelf een back-up via Beheer.';
- }catch(e){status.textContent='Catalogus niet geladen. Je bestaande gegevens blijven beschikbaar.';$('#retryCatalog').hidden=false;}
+ }catch(e){status.textContent='Catalogus niet geladen. Je bestaande gegevens blijven beschikbaar.';$('#retryCatalog').hidden=false;}finally{catalogLoading=false;updateCloudStatus();}
 }
 $('#retryCatalog').onclick=loadPublishedCatalog;
 loadPublishedCatalog();
@@ -916,7 +917,7 @@ async function runCloudSync(){
  finally{cloudBusy=false;updateCloudStatus();}
 }
 async function openSharonLists({fromLink=false}={}){
- if(openingList)return;openingList=true;
+ if(openingList)return;openingList=true;updateCloudStatus();
  try{
   await cloudQueue.current;
   if(saveBlocked)throw Error('Herstel eerst je bestaande opslag voordat je een online lijst opent.');
@@ -949,7 +950,7 @@ async function openSharonLists({fromLink=false}={}){
    const link=el('a','Delen en toegang beheren in Sharon');link.href='https://stefan-van-dijk.github.io/sharon/';$('#modalBody').append(link);
   },()=>true,'Sluiten');
  }catch(e){if(embedded||identity.saved()?.confirmed)openModal('Lijst openen',()=>{$('#modalBody').append(el('p',e.message));if(launchPending)$('#modalBody').append(btn('Opnieuw proberen',()=>{closeModal();openSharonLists({fromLink:true});}));},()=>true,'Sluiten');else openPairing(e.message);}
- finally{openingList=false;if(embedded&&!launchPending)queueMicrotask(()=>syncCloud());}
+ finally{openingList=false;updateCloudStatus();if(embedded&&!launchPending)queueMicrotask(()=>syncCloud());}
 }
 function pairingLabel(){
  const saved=identity.saved();if(embedded){$('#sharonConnection').hidden=true;$('#pairFromClipboard').hidden=true;return;}$('#sharonConnection').hidden=!saved?.confirmed;$('#sharonConnection').textContent='Sharon · verbinding beheren';$('#pairFromClipboard').hidden=!!saved?.confirmed;
@@ -968,7 +969,8 @@ window.addEventListener('online',updateCloudStatus);
 if(new URLSearchParams(location.search).has('shoplist'))openSharonLists({fromLink:true});
 
 function updateCloudStatus(){
- const logo=$('#manageLogo');if(logo){logo.classList.toggle('is-syncing',cloudBusy);logo.classList.toggle('needs-sync',!!list()?.cloud?.pending);logo.setAttribute('aria-busy',String(cloudBusy));logo.title=cloudBusy?'Synchroniseren…':'Menu openen en synchroniseren';}
+ const busy=cloudBusy||catalogLoading||openingList||pairingLoading;
+ for(const logo of [$('#manageLogo'),$('#returnSharon')].filter(Boolean)){logo.classList.toggle('is-loading',busy);logo.classList.toggle('needs-sync',!!list()?.cloud?.pending);logo.setAttribute('aria-busy',String(busy));logo.title=busy?'Laden en synchroniseren…':logo.id==='returnSharon'?'Terug naar Sharon':'Menu openen en synchroniseren';}
  const button=$('#listSyncStatus');if(!button)return;
  const status=listSyncStatus(list(),{online:navigator.onLine,busy:cloudBusy});button.textContent=status.label;button.dataset.state=status.state;button.title=status.detail;button.setAttribute('aria-label',status.label+'. '+status.detail);
 }
@@ -984,7 +986,7 @@ const clipboardPairing=new ClipboardPairing(identity,{
  show:(label,error)=>{const item=$('#pairFromClipboard');item.hidden=!!identity.saved()?.confirmed;item.textContent='Koppelen met Sharon';item.title=error||'';$('#pairClipboardMessage').textContent=error||(!label&&!identity.saved()?.confirmed?'Geen geldige koppelcode gevonden. Kopieer eerst een code in Sharon.':'');},
  success:self=>{pairingLabel();toast('Verbonden met Sharon · '+self.name);if(new URLSearchParams(location.search).has('shoplist'))openSharonLists({fromLink:true});else syncCloud();}
 });
-$('#pairFromClipboard').onclick=async()=>{const result=clipboardPairing.connect();$('#manageLogo').classList.add('is-syncing');try{await result;}finally{updateCloudStatus();}};
+$('#pairFromClipboard').onclick=async()=>{pairingLoading=true;updateCloudStatus();try{await clipboardPairing.connect();}finally{pairingLoading=false;updateCloudStatus();}};
 const menuTrigger=$('#shopMenuBrand')||$('#manageLogo');
 menuTrigger.onclick=()=>{
  const opening=$('#appMenu').hidden;$('#appMenu').hidden=!opening;menuTrigger.setAttribute('aria-expanded',String(opening));pairingLabel();
