@@ -13,3 +13,19 @@ export function branchProducts(state,id){
  while(todo.length){const key=todo.pop(),c=categories.get(key);if(!c||seen.has(key))continue;seen.add(key);for(const e of c.entries){if(e.type==='category')todo.push(e.id);if(e.type==='product')products.add(e.id);}}
  return state.products.filter(p=>!p.remoteId&&(seen.has(p.categoryId)||products.has(p.id)));
 }
+
+export function listCategoryNames(state){
+ const categories=new Map(state.categories.map(category=>[category.id,category]));
+ const personal=new Map(state.products.filter(product=>!product.remoteId).map(product=>[product.id,product]));
+ const central=new Map();
+ for(const product of personal.values()){
+  if(product.centralId)central.set(product.centralId,central.has(product.centralId)?null:product);
+ }
+ return product=>{
+  if(!product)return 'Overig';
+  const own=personal.get(product.remoteId||product.id)||personal.get(product.catalogSourceId)||central.get(product.centralId);
+  const snapshot=categories.get(product.categoryId);
+  const category=categories.get(own?.categoryId)||categories.get(snapshot?.remoteId)||snapshot;
+  return category?.name||'Overig';
+ };
+}
