@@ -1,8 +1,8 @@
-import {categoryTree,branchProducts} from './catalog-tree.mjs?v=20261117-catalog';
+import {categoryTree,branchProducts,listCategoryNames} from './catalog-tree.mjs?v=20261118-category-board';
 import {sharonLogoMarkup} from './brand.mjs?v=20261117-catalog';
 import {openSourceBarcodes,barcodePreferences,categoryProductIds,reachesCategory,displayCentralProduct} from './product-library.mjs?v=20261117-products';
 import {createSyncQueue,flushBeforeReturn} from './sync-queue.mjs?v=20261117-sync-return';
-import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261117-catalog';
+import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261118-category-board';
 import {fetchSelectedList} from './selected-list.mjs?v=20261117-session';
 import {syncAccountCatalog,catalogSnapshot} from './catalog-sync.mjs?v=20261116-account-catalog';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
@@ -20,7 +20,7 @@ if(launch.compact){
 if(embedded)document.body.classList.add('is-embedded');
 let launchPending=launch.compact&&new URLSearchParams(location.search).has('shoplist');
 if(launchPending)document.querySelector('main').inert=true;
-let catalogSelection='',catalogQuery='';
+let catalogSelection=launch.categoryId||'',catalogQuery='';
 let cloudBusy=false,catalogError='',openingList=false,returningToSharon=false,catalogLoading=false,pairingLoading=false;
 const cloudQueue=createSyncQueue(runCloudSync);
 let homeSection='mylist',productCategory='',homeFilter='needed';const KEY=embedded?'shop.embedded.v1:'+(new URLSearchParams(location.search).get('account')||'unknown')+':'+(new URLSearchParams(location.search).get('shoplist')||'new'):'bs.app.v1';let state={schemaVersion:1,categories:[],products:[],recipes:[],lists:embedded?[]:[{id:uid(),name:'Deze week',items:[]}]},activeList,view='home',path=[],saveBlocked=false,stopCamera=()=>{};
@@ -85,7 +85,7 @@ function chooseRecipe(r){let checks=[];openModal(r.name,()=>{if(!r.ingredients.l
  $('#modalBody').append(el('p','Vink uit wat je al in huis hebt. Hoeveelheden in productnamen blijven letterlijk behouden.'));
  r.ingredients.forEach(i=>{const l=el('label',undefined,'checkrow'),c=el('input');c.type='checkbox';c.checked=true;l.append(c,el('span',`${i.quantity} × ${prod(i.productId)?.name}${i.note?' · '+i.note:''}`));$('#modalBody').append(l);checks.push([c,i]);});},()=>{ensureList();let n=0;checks.forEach(([c,i])=>{if(c.checked){addItem(list(),i.productId,i.quantity,i.note);n++;}});save();render();toast(n+' ingrediënten toegevoegd');},'Selectie toevoegen');}
 function renderList(target=$('#listRows'),neededOnly=false){target.replaceChildren();const l=list();$('#progress').textContent=l?`${l.items.filter(i=>i.done).length} van ${l.items.length} afgevinkt`: 'Maak een lijst om te beginnen.';if(!l?.items.length){$('#shoppingProgress').textContent='0 / 0';target.append(el('p','Nog niets op je lijst. Voeg producten toe bij Verzamelen.','empty'));return;}
- const groups=new Map();$('#shoppingProgress').textContent=l.items.filter(i=>i.done).length+' / '+l.items.length;if(neededOnly&&l.items.every(i=>i.done)){target.append(el('p','Alles in de tas. Goed geregeld!','empty success'));return;}for(const item of l.items.filter(i=>(!neededOnly||!i.done)&&matchesProduct(prod(i.productId),$('#listSearch').value,i.note))){const name=cat(prod(item.productId)?.categoryId)?.name||'Overig';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(item);}
+ const groups=new Map(),categoryName=listCategoryNames(state);$('#shoppingProgress').textContent=l.items.filter(i=>i.done).length+' / '+l.items.length;if(neededOnly&&l.items.every(i=>i.done)){target.append(el('p','Alles in de tas. Goed geregeld!','empty success'));return;}for(const item of l.items.filter(i=>(!neededOnly||!i.done)&&matchesProduct(prod(i.productId),$('#listSearch').value,i.note))){const name=categoryName(rawProduct(item.productId));if(!groups.has(name))groups.set(name,[]);groups.get(name).push(item);}
  for(const [name,items]of [...groups].sort(([a],[b])=>a.localeCompare(b,'nl'))){target.append(el('h3',name,'sectionLabel'));items.forEach(i=>{const row=el('div',undefined,'row'+(i.done?' done':'')),check=el('input');row.dataset.listItem=i.id;check.type='checkbox';check.checked=i.done;check.setAttribute('aria-label',prod(i.productId).name+' afvinken');const setDone=value=>{i.done=value;check.checked=value;row.classList.toggle('done',value);if(value&&!i.purchaseRecorded){i.purchaseRecorded=true;const p=prod(i.productId);p.purchaseCount=(p.purchaseCount||0)+1;p.lastPurchased=Date.now();}save();renderContext();$('#progress').textContent=`${l.items.filter(item=>item.done).length} van ${l.items.length} afgevinkt`;$('#shoppingProgress').textContent=l.items.filter(item=>item.done).length+' / '+l.items.length;};check.onchange=()=>setDone(check.checked);const text=btn('',()=>setDone(!i.done),'text');text.setAttribute('aria-label',prod(i.productId).name+' afvinken of terugzetten');text.append(el('strong',prod(i.productId).name));if(i.note)text.append(el('small',i.note));const qty=el('span',i.quantity+' ×','listQuantity');qty.setAttribute('aria-label','Aantal '+prod(i.productId).name);const remove=btn('×',()=>removeListItem(i,row),'quiet');remove.setAttribute('aria-label','Verwijder '+prod(i.productId).name);row.append(check,text,qty,remove);swipeAction(row,()=>setDone(!i.done));target.append(row);});}
 }
 $('#manageSearch').oninput=renderManage;$('#listSelect').onchange=e=>{activeList=e.target.value;save();render();};
@@ -945,7 +945,20 @@ document.addEventListener('click',event=>{if(!event.target.closest('#appMenu,#ma
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('#appMenu').hidden){closeMenu();menuTrigger.focus();}});
 $('#appMenu').addEventListener('click',event=>{if(event.target.closest('#sharonLists,#sharonConnection'))closeMenu();});
 
-if(new URLSearchParams(location.search).get('view')==='catalog')switchView('catalog');
+if(launch.view==='catalog'){
+ switchView('catalog');
+ if(launch.collectionId)openRequestedCollection(launch.collectionId);
+}
+
+function openRequestedCollection(id){
+ libraryAction(async api=>{
+  await cloudQueue.current;
+  const {collections}=await api.library('index');
+  const collection=collections.find(row=>row.id===id);
+  if(!collection)throw Error('Deze gedeelde catalogus is niet beschikbaar.');
+  if(view==='catalog'&&!$('#modal').open)openSharedCollection(collection);
+ });
+}
 
 function shareCatalog(categoryId=null,collectionId=null){
  libraryAction(async()=>{
@@ -963,16 +976,18 @@ function shareCatalog(categoryId=null,collectionId=null){
 }
 function renderCatalog(){
  const target=$('#catalogContent');target.replaceChildren();
+ const category=state.categories.find(row=>!row.remoteId&&row.id===catalogSelection&&row.name!=='Home');
  const tools=el('div',undefined,'toolbar');
- tools.append(btn('+ Product',()=>editProduct()),btn('+ Categorie',()=>$('#newCategory').click(),'secondary'),btn('Delen via Sharon',()=>shareCatalog(catalogSelection||null),'secondary'));
+ tools.append(btn('+ Product',()=>editProduct()),btn('+ Categorie',()=>$('#newCategory').click(),'secondary'),btn('Delen via Sharon',()=>shareCatalog(category?.id||null),'secondary'));
  target.append(tools);
  const layout=el('div',undefined,'catalogLayout'),tree=el('aside',undefined,'catalogTree');tree.setAttribute('aria-label','Categorieboom');
  const select=(id)=>{catalogSelection=id;renderCatalog();};
  const all=btn('Alle producten',()=>select(''),'quiet');all.setAttribute('aria-pressed',String(!catalogSelection));tree.append(all);
  function draw(nodes,parent){for(const {category,children}of nodes){const item=el('div',undefined,'catalogBranch');const choice=btn(category.name,()=>select(category.id),'quiet');choice.setAttribute('aria-pressed',String(catalogSelection===category.id));if(children.length){const details=el('details'),summary=el('summary',category.name);details.open=true;details.append(summary,choice);draw(children,details);item.append(details);}else item.append(choice);parent.append(item);}}
  draw(categoryTree(state.categories),tree);
- const content=el('div',undefined,'catalogProducts');content.append(el('h2',cat(catalogSelection)?.name||'Alle producten'));
- if(catalogSelection){content.append(btn('Categorie indelen',()=>editCategoryParents(cat(catalogSelection)),'quiet'));}
+ const content=el('div',undefined,'catalogProducts');content.append(el('h2',category?.name||(catalogSelection?'Categorie ophalen':'Alle producten')));
+ if(category)content.append(btn('Categorie indelen',()=>editCategoryParents(category),'quiet'));
+ else if(catalogSelection)content.append(el('p','De gekozen categorie is nog niet beschikbaar in ShopList.','muted'));
  const search=el('input');search.type='search';search.placeholder='Zoek in de catalogus…';search.setAttribute('aria-label','Zoek in de catalogus');search.value=catalogQuery;
  const rows=el('div');const paint=()=>{rows.replaceChildren();const source=catalogSelection?branchProducts(state,catalogSelection):state.products.filter(p=>!p.remoteId);const filtered=source.filter(p=>matchesProduct(p,norm(catalogQuery))).sort((a,b)=>a.name.localeCompare(b.name,'nl'));rows.append(el('p',filtered.length+' producten','muted'));for(const p of filtered){const row=el('div',undefined,'row');row.append(el('span',p.name,'text'),btn('Bewerken',()=>editProduct(p),'quiet'));rows.append(row);}};
  search.oninput=()=>{catalogQuery=search.value;paint();};content.append(search,rows);paint();layout.append(tree,content);target.append(layout);

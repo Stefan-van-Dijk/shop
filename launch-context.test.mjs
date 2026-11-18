@@ -16,6 +16,13 @@ test('Embedded collection and check modes are announced only to the trusted Shar
  assert.deepEqual(sent,[{data:{type:'shop:view',view:'collect'},origin:'https://stefan-van-dijk.github.io'},{data:{type:'shop:view',view:'check'},origin:'https://stefan-van-dijk.github.io'}]);
  assert.equal(publishHostView('manage',win),false);assert.equal(sent.length,2);
 });
+test('A Sharon catalog board selects exactly its category or accessible collection',()=>{
+ const url='https://example.org/?from=sharon&view=catalog&';
+ assert.equal(readLaunchContext(url+'category=fruit').categoryId,'fruit');
+ assert.equal(readLaunchContext(url+'collection=abcdef123456').collectionId,'abcdef123456');
+ assert.equal(readLaunchContext(url+'category=%2Ffruit').categoryId,null);
+ assert.equal(readLaunchContext('https://example.org/?view=catalog&category=fruit').categoryId,null);
+});
 test('Standalone Shop and unrelated embedding do not publish their current view',()=>{
  const sent=[],win={location:{href:'https://stefan-van-dijk.github.io/shop/?from=sharon'},postMessage:data=>sent.push(data)};win.parent=win;
  assert.equal(publishHostView('home',win),false);
