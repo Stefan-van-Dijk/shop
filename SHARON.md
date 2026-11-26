@@ -25,3 +25,17 @@ Bij openen in een iframe gebruikt Shop een beperkte berichtenverbinding met Shar
 De URL bevat uitsluitend context: `account` (niet-geheim identiteit-ID voor opslagisolatie), `shoplist`, `from` en optioneel `view`. Shop controleert dat `account` overeenkomt met de identiteit uit de sessie. Lokale in-app-gegevens staan onder een aparte sleutel per identiteit en openingslijst; bestaande `bs.app.v1`-gegevens en de zelfstandige apparaatsleutel worden niet gelezen of vervangen. De sessie maakt geen permanente Shop-installatiekoppeling aan.
 
 Openen via Apps gebruikt dezelfde in-app-route zonder vooraf gekozen lijst; Verzamelen en Nieuwe lijst zijn beschikbaar. Het lijsticoon in een board opent de geselecteerde lijst binnen Sharon en maakt geen extern browservenster.
+
+## Gegevens en verwijzingen
+
+| Gegeven | Bestaande sleutel en bron |
+| --- | --- |
+| Sharon-persoon | ID12 van de gekoppelde Sharon-identiteit. De sessie of apparaatsleutel bepaalt toegang. |
+| Persoonlijke categorie, product, gerecht of activiteit | Bestaande ShopList-catalogussleutel, meestal UUID of een vaste sleutel uit de startcatalogus. Categorieën verwijzen met `entries[].type` en `entries[].id`. Een activiteit is een catalogusrecord met `kind: 'activity'`. |
+| Centraal product | ID12 in de centrale productbibliotheek op de bestaande koppelserver. Een persoonlijk catalogusrecord verwijst ernaar via `centralId` en bewaart zijn eigen categorie en personalisatie. |
+| Gedeelde catalogusverzameling | Eigen ID12 in de ShopList-bibliotheek op de koppelserver. De verzameling verwijst naar categorieën uit de catalogus van de eigenaar. |
+| Boodschappenlijst | Bestaande ShopList-lijstsleutel, meestal UUID. Na koppeling bewaart de koppelserver de gedeelde revisie en rechten. De browser bewaart de werkkopie en onverzonden wijzigingen. |
+
+Gebruik catalogus- en lijst-ID’s binnen hun bestaande contract. Een generieke ID12-verwijzing kan aansluiten op een centrale product- of verzamelings-ID zodra de bijbehorende bron en klasse zijn vastgelegd. Behoud de oorspronkelijke sleutels en volg voor de getoonde productinformatie de bestaande verwijzing naar de centrale productbibliotheek.
+
+De persoonlijke catalogus wordt met `shopcatalog-read` en `shopcatalog-put` per Sharon-identiteit gesynchroniseerd. ShopList bewaart de operatie-ID en verwachte revisie voordat het een wijziging verstuurt. Als het antwoord op een opslagactie wegvalt, controleert ShopList bij de volgende synchronisatie op de server of diezelfde operatie met dezelfde inhoud is opgeslagen. Bevestiging vormt het uitgangspunt voor eventuele latere lokale wijzigingen. Een werkelijke botsing tussen wijzigingen aan hetzelfde record blijft een conflict. Deze herstelroute gebruikt het bestaande servercontract en vergt geen nieuwe Strato-upload.

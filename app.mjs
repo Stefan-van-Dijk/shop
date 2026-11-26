@@ -4,7 +4,7 @@ import {openSourceBarcodes,barcodePreferences,categoryProductIds,reachesCategory
 import {createSyncQueue,flushBeforeReturn} from './sync-queue.mjs?v=20261117-sync-return';
 import {readLaunchContext,publishHostView} from './launch-context.mjs?v=20261118-category-board';
 import {fetchSelectedList} from './selected-list.mjs?v=20261117-session';
-import {syncAccountCatalog,catalogSnapshot} from './catalog-sync.mjs?v=20261116-account-catalog';
+import {syncAccountCatalog,catalogSnapshot} from './catalog-sync.mjs?v=20261126-catalog-recovery';
 import {ClipboardPairing} from './clipboard-pairing.mjs?v=20261115-list-lifecycle';
 import {listSyncStatus} from './sync-status.mjs?v=20261115-list-lifecycle';
 import {connectSharon,identity,embedded,snapshot,installSnapshot} from './sharon.mjs?v=20261117-product-library';
