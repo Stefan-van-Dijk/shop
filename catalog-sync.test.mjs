@@ -45,3 +45,33 @@ test('personal category preserves local menu entries into shared content while u
  assert.deepEqual(state.categories[0].entries,[{type:'product',id:'shared-p'},{type:'recipe',id:'r'}]);
  assert.equal(state.recipes[0].id,'r');
 });
+
+test('a lost catalog acknowledgement does not conflict with a later edit to the same product',async()=>{
+ const category={id:'c',name:'C',entries:[{type:'product',id:'p'}]};
+ const product={id:'p',name:'Initial',categoryId:'c',barcodes:[]};
+ const base={categories:[category],products:[product],recipes:[]};
+ const state={...structuredClone(base),catalogSync:{personId:'person',base,revision:1}};
+ state.products[0].name='First edit';
+ let remote={revision:1,payload:structuredClone(base)},attempts=0;
+ const api={
+  catalog:async()=>structuredClone({catalog:remote}),
+  writeCatalog:async(payload,revision,operation)=>{
+   assert.equal(revision,remote.revision);
+   attempts++;
+   if(attempts===2)throw Error('offline');
+   remote={payload:structuredClone(payload),revision:revision+1,operation};
+   if(attempts===1)throw Error('response lost');
+   return {catalog:structuredClone(remote)};
+  }
+ };
+ await assert.rejects(syncAccountCatalog(state,api,'person',()=>{}),/response lost/);
+ state.products[0].name='Second edit';
+ await assert.rejects(syncAccountCatalog(state,api,'person',()=>{}),/offline/);
+ assert.equal(state.catalogSync.base.products[0].name,'First edit');
+ assert.equal(state.catalogSync.pending.payload.products[0].name,'Second edit');
+ await syncAccountCatalog(state,api,'person',()=>{});
+ assert.equal(remote.revision,3);
+ assert.equal(remote.payload.products[0].name,'Second edit');
+ assert.equal(state.products[0].name,'Second edit');
+ assert.equal(state.catalogSync.pending,undefined);
+});

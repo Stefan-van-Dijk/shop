@@ -34,14 +34,21 @@ export function mergeCatalogChanges(base,local,remote){
 }
 export async function syncAccountCatalog(state,api,personId,persist){
  if(!personId)throw Error('De gekoppelde identiteit ontbreekt.');
- const meta=state.catalogSync;
+ let meta=state.catalogSync;
  if(meta&&meta.personId!==personId)throw Error('Deze catalogus hoort bij een andere identiteit. Je lokale gegevens blijven bewaard.');
  const before=catalogSnapshot(state),response=await api.catalog();
- const remote=response.catalog,merged=mergeCatalogChanges(meta?.base,before,remote.payload);
+ const remote=response.catalog;
+ // A read can confirm a write whose response never reached this device.
+ const previousAttempt=meta?.pending;
+ if(previousAttempt&&remote.operation===previousAttempt.operation&&same(remote.payload,previousAttempt.payload)){
+  meta={personId,base:remote.payload,revision:remote.revision};
+ }
+ const merged=mergeCatalogChanges(meta?.base,before,remote.payload);
  validate({schemaVersion:1,...composeCatalog(state,merged),lists:state.lists||[]});
  let confirmed=remote;
  if(!same(merged,remote.payload)){
-  const pending=meta?.pending&&same(meta.pending.payload,merged)?meta.pending:{payload:merged,revision:remote.revision,operation:crypto.randomUUID()};
+  const pending=meta?.pending?.revision===remote.revision&&same(meta.pending.payload,merged)
+   ?meta.pending:{payload:merged,revision:remote.revision,operation:crypto.randomUUID()};
   state.catalogSync={...meta,personId,pending};await persist();
   confirmed=(await api.writeCatalog(pending.payload,pending.revision,pending.operation)).catalog;
  }
