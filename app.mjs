@@ -815,11 +815,24 @@ window.addEventListener('message',event=>{
 });
 if(embedded)window.parent.postMessage({type:'shop:return-ready'},launch.hostOrigin);
 async function runCloudSync(){
- if(cloudBusy||saveBlocked||document.hidden||launchPending)return;cloudBusy=true;updateCloudStatus();let syncingList;
+ if(cloudBusy||saveBlocked||document.hidden||launchPending)return;cloudBusy=true;updateCloudStatus();let syncingList,connected=false;
  try{
   if(!embedded&&!identity.saved()?.confirmed)return;
   const api=await connectSharon();
-  try{await syncAccountCatalog(state,api,identity.saved()?.self?.personId,()=>localStorage.setItem(KEY,JSON.stringify(state)));catalogError='';}catch(error){if(catalogError!==error.message)toast(error.message);catalogError=error.message;}
+  connected=true;
+  try{
+   await syncAccountCatalog(state,api,identity.saved()?.self?.personId,()=>localStorage.setItem(KEY,JSON.stringify(state)));
+   catalogError='';
+  }catch(error){
+   const messages={
+    invalid_catalog:'Sharon heeft de catalogus geweigerd. De catalogus bevat ongeldige gegevens of is te groot.',
+    catalog_conflict:'De catalogus is ondertussen elders gewijzigd. Synchroniseer opnieuw. Je lokale keuzes blijven bewaard.',
+    unknown_action:'De opslagserver van Sharon ondersteunt deze catalogusfunctie nog niet. Werk connections.php bij.'
+   };
+   const message=messages[error.code]||error.message;
+   if(catalogError!==message)toast(message);
+   catalogError=message;
+  }
   await refreshLibrary(api);
   const remote=await api.index();
   // Resolve membership before uploads, so a removed list cannot be recreated.
@@ -861,7 +874,7 @@ async function runCloudSync(){
    }
   }
 
- }catch(error){for(const l of state.lists.filter(l=>l.cloud)){if(!syncingList||l===syncingList)l.cloud.error=error.message;}if(syncingList?.cloud&&/gedeelde lijst is gewijzigd|geen toegang|alleen bekijken/.test(error.message)){syncingList.cloud.conflict=true;localStorage.setItem(KEY,JSON.stringify(state));}$('#saveStatus').textContent='Lokaal bewaard · synchronisatie wacht';}
+ }catch(error){if(!connected)catalogError=error.message;for(const l of state.lists.filter(l=>l.cloud)){if(!syncingList||l===syncingList)l.cloud.error=error.message;}if(syncingList?.cloud&&/gedeelde lijst is gewijzigd|geen toegang|alleen bekijken/.test(error.message)){syncingList.cloud.conflict=true;localStorage.setItem(KEY,JSON.stringify(state));}$('#saveStatus').textContent='Lokaal bewaard · synchronisatie wacht';}
  finally{cloudBusy=false;updateCloudStatus();}
 }
 async function openSharonLists({fromLink=false}={}){
@@ -963,7 +976,9 @@ function openRequestedCollection(id){
 function shareCatalog(categoryId=null,collectionId=null){
  libraryAction(async()=>{
   await syncCloud();
-  if(state.catalogSync?.pending||JSON.stringify(catalogSnapshot(state))!==JSON.stringify(state.catalogSync?.base||{}))throw Error('De catalogus is nog niet opgeslagen in Sharon. Synchroniseer eerst en probeer opnieuw.');
+  if(catalogError)throw Error(catalogError);
+  if(saveBlocked)throw Error('ShopList kan je wijzigingen niet lokaal bewaren. Herstel eerst de lokale opslag en probeer opnieuw.');
+  if(state.catalogSync?.pending||JSON.stringify(catalogSnapshot(state))!==JSON.stringify(state.catalogSync?.base||{}))throw Error('De catalogus is nog niet opgeslagen in Sharon. Probeer opnieuw zodra de synchronisatie is voltooid.');
   if(embedded){
    window.parent.postMessage({type:'shop:catalog-share',categoryId,collectionId},launch.hostOrigin);
   }else{
